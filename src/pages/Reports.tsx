@@ -1,0 +1,22 @@
+import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Download, Printer } from "lucide-react";
+import { db } from "../db";
+import { euro } from "../lib/money";
+import { createAnnualReportPdf, downloadBlob } from "../lib/pdf";
+import { annualFigures } from "../lib/reporting";
+
+export function Reports() {
+  const invoices = useLiveQuery(() => db.invoices.toArray(), [], []); const payments = useLiveQuery(() => db.payments.toArray(), [], []); const expenses = useLiveQuery(() => db.expenses.toArray(), [], []); const company = useLiveQuery(() => db.company.get("company"));
+  const years = useMemo(() => [...new Set([new Date().getFullYear(), ...invoices.map((item) => item.year), ...expenses.map((item) => Number(item.paidAt.slice(0, 4)))])].sort((a, b) => b - a), [invoices, expenses]);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const { incomeCents: income, expenseCents: costs, openCents: open } = annualFigures(year, invoices, payments, expenses);
+  const cancelled = invoices.filter((item) => item.year === year && item.status === "cancelled").reduce((sum, item) => sum + item.totalCents, 0);
+  const months = Array.from({ length: 12 }, (_, index) => { const prefix = `${year}-${String(index + 1).padStart(2, "0")}`; const monthIncome = payments.filter((item) => item.paidAt.startsWith(prefix)).reduce((sum, item) => sum + item.amountCents, 0); const monthCosts = expenses.filter((item) => !item.cancelled && item.paidAt.startsWith(prefix)).reduce((sum, item) => sum + item.deductibleCents, 0); return { name: new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(year, index)), income: monthIncome, costs: monthCosts }; });
+  const categories = [...expenses.filter((item) => !item.cancelled && item.paidAt.startsWith(String(year))).reduce((map, item) => map.set(item.category, (map.get(item.category) || 0) + item.deductibleCents), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const pdf = async () => { if (!company) return; const result = await createAnnualReportPdf(year, company, payments, invoices, expenses); downloadBlob(result.blob, result.filename); };
+  return <>
+    <header className="page-header print-hide"><div><span className="eyebrow">Interne EÜR-orientierte Übersicht</span><h1>Gewinn & Verlust</h1><p>Zahlungsbasierte Auswertung mit nachvollziehbaren Monats- und Kategoriedetails.</p></div><div className="actions"><select value={year} onChange={(e) => setYear(Number(e.target.value))}>{years.map((item) => <option key={item}>{item}</option>)}</select><button className="secondary" onClick={() => window.print()}><Printer /> Drucken</button><button className="primary" onClick={pdf}><Download /> PDF</button></div></header>
+    <article className="annual-report"><header><div><span>{company?.name}</span><h1>Gewinn-/Verlustübersicht {year}</h1><p>01.01.{year} bis 31.12.{year}</p></div><img src="/logo-schrift.png" alt="" /></header><section className="report-summary"><div><span>Betriebseinnahmen</span><strong>{euro(income)}</strong><small>tatsächlich erhalten</small></div><div><span>Betriebsausgaben</span><strong>{euro(costs)}</strong><small>abziehbarer Anteil</small></div><div className={income - costs >= 0 ? "positive" : "negative"}><span>{income - costs >= 0 ? "Gewinn" : "Verlust"}</span><strong>{euro(income - costs)}</strong><small>vorläufiges Ergebnis</small></div></section><div className="report-columns"><section><h2>Monatsübersicht</h2><table><thead><tr><th>Monat</th><th>Einnahmen</th><th>Ausgaben</th><th>Ergebnis</th></tr></thead><tbody>{months.map((month) => <tr key={month.name}><td>{month.name}</td><td>{euro(month.income)}</td><td>{euro(month.costs)}</td><td>{euro(month.income - month.costs)}</td></tr>)}</tbody></table></section><section><h2>Ausgaben nach Kategorien</h2>{categories.length ? <div className="category-list">{categories.map(([category, value]) => <div key={category}><span>{category}</span><strong>{euro(value)}</strong><i style={{ width: `${costs ? Math.max(3, value / costs * 100) : 0}%` }} /></div>)}</div> : <p className="empty">Keine Ausgaben in diesem Jahr.</p>}<dl className="summary report-notes"><div><dt>Offene Forderungen</dt><dd>{euro(open)}</dd></div><div><dt>Stornierte Rechnungen</dt><dd>{euro(cancelled)}</dd></div></dl></section></div><footer>Diese Auswertung dient der internen Übersicht und ersetzt keine steuerliche Beratung oder die amtliche Anlage EÜR. Erstellt am {new Intl.DateTimeFormat("de-DE").format(new Date())}.</footer></article>
+  </>;
+}
