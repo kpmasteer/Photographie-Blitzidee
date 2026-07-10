@@ -1,0 +1,194 @@
+[
+  {
+    "file": "Rechnung 2016.xlsm",
+    "year": 2016,
+    "sheets": [
+      "Rechnung",
+      "Umsatz",
+      "Kunden",
+      "Ausgaben",
+      "Listen",
+      "Gewinermittlung",
+      "Shootingliste"
+    ],
+    "variant": "Legacy 2016–2017",
+    "customers": 22,
+    "invoices": 22,
+    "expenses": 68,
+    "payments": 22,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2017.xlsm",
+    "year": 2017,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen",
+      "Tabelle1"
+    ],
+    "variant": "Legacy 2016–2017",
+    "customers": 29,
+    "invoices": 33,
+    "expenses": 31,
+    "payments": 33,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2018.xlsm",
+    "year": 2018,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen",
+      "Tabelle1"
+    ],
+    "variant": "Shooting-Tabelle 2018–2022",
+    "customers": 6,
+    "invoices": 6,
+    "expenses": 22,
+    "payments": 6,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2019.xlsm",
+    "year": 2019,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Shooting-Tabelle 2018–2022",
+    "customers": 2,
+    "invoices": 3,
+    "expenses": 15,
+    "payments": 3,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2020.xlsm",
+    "year": 2020,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Shooting-Tabelle 2018–2022",
+    "customers": 20,
+    "invoices": 21,
+    "expenses": 31,
+    "payments": 19,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2021.xlsm",
+    "year": 2021,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Shooting-Tabelle 2018–2022",
+    "customers": 11,
+    "invoices": 11,
+    "expenses": 27,
+    "payments": 11,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2022.xlsm",
+    "year": 2022,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Shooting-Tabelle 2018–2022",
+    "customers": 11,
+    "invoices": 11,
+    "expenses": 44,
+    "payments": 11,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2023.xlsm",
+    "year": 2023,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Gutschein/Teilzahlung 2023–2025",
+    "customers": 9,
+    "invoices": 9,
+    "expenses": 37,
+    "payments": 9,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2024.xlsm",
+    "year": 2024,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Gutschein/Teilzahlung 2023–2025",
+    "customers": 11,
+    "invoices": 12,
+    "expenses": 39,
+    "payments": 10,
+    "templates": 0
+  },
+  {
+    "file": "Rechnung 2025.xlsm",
+    "year": 2025,
+    "sheets": [
+      "Rechnung",
+      "Kunden",
+      "Umsatz",
+      "Ausgaben",
+      "Shootingliste",
+      "Gewinnermittlung",
+      "Listen"
+    ],
+    "variant": "Gutschein/Teilzahlung 2023–2025",
+    "customers": 1,
+    "invoices": 1,
+    "expenses": 25,
+    "payments": 1,
+    "templates": 0
+  }
+]
