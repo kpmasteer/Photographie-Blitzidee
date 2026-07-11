@@ -48,6 +48,11 @@
 .position-discounts .discount-controls:first-of-type { border-top:0; }
 .position-discounts .discount-controls>span { align-self:center; }
 .editor-form>.discount-controls { padding:1rem; border:1px solid var(--line); border-radius:14px; background:var(--paper); }
+.editable-choice { display:grid; grid-template-columns:minmax(0,1fr) 48px; gap:6px; min-width:0; }
+.editable-choice>input,.editable-choice>textarea,.editable-choice>select { min-width:0; width:100%; }
+.editable-choice>select { padding:0 6px; text-indent:-9999px; background-color:var(--paper); }
+.editable-choice>textarea { min-height:76px; }
+.position-discounts,.editor-form>.discount-controls { background:color-mix(in srgb,var(--tint) 35%,var(--paper)); border-color:var(--line); }
 .draft-actions { display: flex; justify-content: flex-end; margin: -1rem 0 1rem; }
 .recurring-section { margin-top: 1rem; }
 .compact-invoice-toolbar .search { min-width: min(100%,320px); }
@@ -87,15 +92,15 @@
 
 /* Positionseditor: explizite Desktopspalten verhindern implizite Felder außerhalb der Karte. */
 @media (min-width: 1151px) {
-  .item-card { grid-template-columns:28px minmax(0,1.4fr) minmax(0,1.2fr) minmax(70px,.5fr) minmax(90px,.7fr) minmax(90px,.7fr) minmax(75px,.5fr); overflow:hidden; }
+  .item-card { grid-template-columns:28px minmax(220px,1.6fr) 90px minmax(110px,.75fr) minmax(115px,.75fr) 90px; overflow:hidden; }
   .item-card > label { min-width:0; }
   .item-card > label input,.item-card > label select,.item-card > label textarea { min-width:0; max-width:100%; }
-  .item-card > strong { min-width:0; grid-column:7; }
+  .item-card > strong { min-width:0; grid-column:6; }
   .item-card > .item-actions { grid-column:2 / span 2; }
 }
 @media (min-width: 901px) and (max-width: 1150px) {
   .item-card { grid-template-columns:28px minmax(0,1fr) minmax(120px,.55fr); overflow:hidden; }
-  .item-card > label { min-width:0; }
+  .item-card > label { min-width:0; grid-column:2 / -1; }
   .item-card > label input,.item-card > label select,.item-card > label textarea { min-width:0; max-width:100%; }
   .item-card > strong { grid-column:3; }
   .item-card > .item-actions { grid-column:2; }

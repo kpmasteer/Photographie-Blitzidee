@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.9 - 2026-07-11
+
+- separates Feld für Beschreibungsvorlagen und Beschreibung zu einem editierbaren Kombinationsfeld zusammengeführt
+- Beschreibungsvorlagen sind über einen klaren Pfeil auswählbar; Freitext bleibt direkt im selben Feld möglich
+- neue Beschreibungstexte können beim Verlassen des Feldes auf Nachfrage als Vorlage gespeichert werden
+- Einheitenfeld als zuverlässiges Kombinationsfeld mit `Keine Einheit`, `Pauschale`, `Bilder` und Freitext umgesetzt
+- bestehende Einheit kann vollständig geleert werden
+- Einzelpreis sowie prozentuale und feste Rabattbeträge markieren den vorhandenen Wert beim Fokus auf allen Geräten
+- Positionsrabatt und Gesamtrabatt verwenden dieselbe Hintergrundfarbe und Rahmenbehandlung
+
 ## 0.4.8 - 2026-07-11
 
 - Einheitenfeld um schnelle Vorschläge für `Pauschale` und `Bilder` erweitert
