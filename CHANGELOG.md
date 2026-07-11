@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4 - 2026-07-11
+
+- Druckbutton innerhalb der Rechnungsvorschau auf denselben mobilen PDF-Systemdruck wie der direkte Druckbutton umgestellt
+- einheitliches Verhalten für direkten Druck und Vorschau-Druck auf Android, iPhone und iPad
+- Logoabmessungen werden aus dem Originalseitenverhältnis berechnet und proportional in den vorgesehenen PDF-Rahmen eingepasst
+- automatisierter Test gegen horizontale und vertikale Logo-Verzerrung ergänzt
+
 ## 0.4.3 - 2026-07-11
 
 - mobiler Rechnungsdruck auf textbasierte A4-PDF und natives Teilen-/Druckmenü von iOS, iPadOS und Android umgestellt

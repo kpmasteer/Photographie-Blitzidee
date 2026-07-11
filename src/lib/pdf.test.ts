@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Company, Invoice } from "../types";
-import { createInvoicePdf } from "./pdf";
+import { createInvoicePdf, fitDimensions } from "./pdf";
 
 const company: Company = {
   id: "company", name: "Photographie Blitzidee", owner: "Lidia Lang", street: "Teststraße 1", postalCode: "12345", city: "Teststadt", country: "Deutschland",
@@ -18,6 +18,12 @@ const invoice: Invoice = {
 };
 
 describe("textbasierte Rechnungs-PDF", () => {
+  it("passt das Logo ohne Verzerrung in seinen Begrenzungsrahmen ein", () => {
+    const wide = fitDimensions(1200, 400, 74, 32);
+    const tall = fitDimensions(400, 1200, 74, 32);
+    expect(wide.width).toBe(74); expect(wide.height).toBeCloseTo(74 / 3); expect(wide.width / wide.height).toBeCloseTo(3);
+    expect(tall.height).toBe(32); expect(tall.width).toBeCloseTo(32 / 3); expect(tall.width / tall.height).toBeCloseTo(1 / 3);
+  });
   it("erzeugt nach der Finalisierung eine nichtleere echte PDF-Datei", async () => {
     const result = await createInvoicePdf(invoice, undefined, company);
     const signature = new TextDecoder().decode(await result.blob.slice(0, 5).arrayBuffer());

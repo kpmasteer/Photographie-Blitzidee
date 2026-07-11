@@ -17,6 +17,12 @@ const safeName = (value: string) => value.normalize("NFKD")
   .replace(/^_+|_+$/g, "")
   .slice(0, 80);
 
+export function fitDimensions(width: number, height: number, maxWidth: number, maxHeight: number) {
+  if (width <= 0 || height <= 0) return { width: maxWidth, height: maxHeight };
+  const scale = Math.min(maxWidth / width, maxHeight / height);
+  return { width: width * scale, height: height * scale };
+}
+
 export async function createInvoicePdf(invoice: Invoice, customer: Customer | undefined, company: Company): Promise<{ blob: Blob; filename: string }> {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   const margin = 18;
@@ -31,7 +37,9 @@ export async function createInvoicePdf(invoice: Invoice, customer: Customer | un
     if (!continuation) {
       try {
         const logo = await loadImage("/Logo Photographie Blitzidee Neu.png");
-        doc.addImage(logo, "PNG", margin, 12, 74, 32, undefined, "FAST");
+        const properties = doc.getImageProperties(logo);
+        const size = fitDimensions(properties.width, properties.height, 74, 32);
+        doc.addImage(logo, "PNG", margin, 12, size.width, size.height, undefined, "FAST");
       } catch { /* The textual company header remains a complete fallback. */ }
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
