@@ -31,8 +31,9 @@
 .preview-head img { width: 72mm; max-height: 30mm; object-fit: contain; object-position: left top; }
 .preview-head div,.preview-address { display: flex; flex-direction: column; }
 .preview-address { margin: 16mm 0 8mm; min-height: 29mm; }
-.preview-meta { display: flex; justify-content: flex-end; gap: 1rem; }
-.preview-meta div { display: flex; gap: .5rem; }
+.preview-meta { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1rem; }
+.preview-meta div { min-width: 0; display: flex; flex-direction: column; gap: .25rem; }
+.preview-meta dd { min-width: 0; margin: 0; overflow-wrap: anywhere; word-break: break-word; }
 .invoice-preview-page table { width: 100%; border-collapse: collapse; margin: 5mm 0; break-inside:auto; }
 .invoice-preview-page tr { break-inside:avoid; break-after:auto; }
 .invoice-preview-page thead { display:table-header-group; }

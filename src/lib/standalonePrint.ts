@@ -14,10 +14,10 @@ export const INVOICE_PRINT_CSS = `${A4_DOCUMENT_CSS}
 .preview-address { margin: 12mm 0 6mm; min-height: 25mm; display: flex; flex-direction: column; }
 .preview-address small { margin-bottom: 4mm; text-decoration: underline; font-size: 7pt; }
 h1 { margin: 0 0 4mm; font: 22pt/1.1 Georgia, serif; }
-.preview-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 0 0 4mm; }
-.preview-meta div { display: flex; flex-direction: column; }
+.preview-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3mm; margin: 0 0 4mm; }
+.preview-meta div { min-width: 0; display: flex; flex-direction: column; }
 .preview-meta dt { color: #716961; font-size: 7pt; }
-.preview-meta dd { margin: 1mm 0 0; font-weight: 700; }
+.preview-meta dd { min-width: 0; margin: 1mm 0 0; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; }
 p { margin: 2.5mm 0; }
 table { width: 100%; border-collapse: collapse; margin: 4mm 0; }
 thead { display: table-header-group; }
@@ -66,7 +66,7 @@ export function buildStandalonePrintHtml(markup: string, css: string, title: str
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><base href="${baseUrl}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>${css}</style></head><body>${markup}</body></html>`;
 }
 
-const waitForImages = async (doc: Document) => Promise.all(Array.from(doc.images).map(async (image) => {
+export const waitForPrintImages = async (doc: Document) => Promise.all(Array.from(doc.images).map(async (image) => {
   if (image.complete) return;
   await new Promise<void>((resolve) => {
     image.addEventListener("load", () => resolve(), { once: true });
@@ -74,37 +74,23 @@ const waitForImages = async (doc: Document) => Promise.all(Array.from(doc.images
   });
 }));
 
-const nextLayout = (view: Window) => new Promise<void>((resolve) => view.requestAnimationFrame(() => view.requestAnimationFrame(() => resolve())));
+export const waitForPrintLayout = (view: Window) => new Promise<void>((resolve) => view.requestAnimationFrame(() => view.requestAnimationFrame(() => resolve())));
 
-export async function printElementInIsolatedFrame(options: { element: HTMLElement; css: string; title: string; requiredText: string[] }) {
-  document.getElementById("standalone-print-frame")?.remove();
-  const frame = document.createElement("iframe");
-  frame.id = "standalone-print-frame";
-  frame.title = "Temporäres Druckdokument";
-  frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
-  document.body.append(frame);
-  try {
-    const loaded = new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(() => reject(new Error("Das Druckdokument konnte nicht geladen werden.")), 10_000);
-      frame.addEventListener("load", () => { window.clearTimeout(timeout); resolve(); }, { once: true });
-    });
-    frame.srcdoc = buildStandalonePrintHtml(options.element.outerHTML, options.css, options.title, document.baseURI);
-    await loaded;
-    const view = frame.contentWindow; const doc = frame.contentDocument;
-    if (!view || !doc) throw new Error("Das Druckdokument ist nicht verfügbar.");
-    await doc.fonts?.ready;
-    await waitForImages(doc);
-    await nextLayout(view);
-    const text = doc.body.textContent?.replace(/\s+/g, " ").trim() || "";
-    const page = doc.body.firstElementChild as HTMLElement | null;
-    if (!page || page.getBoundingClientRect().height < 1 || options.requiredText.some((value) => !text.includes(value))) throw new Error("Das Druckdokument ist unvollständig und wurde nicht gedruckt.");
-    const cleanup = () => frame.remove();
-    view.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(cleanup, 60_000);
-    view.focus();
-    view.print();
-  } catch (cause) {
-    frame.remove();
-    throw cause;
-  }
+let activePrintWindow: Window | null = null;
+
+export type StoredPrintDocument = { markup: string; css: string; title: string; requiredText: string[] };
+export type PrintHostWindow = Window & { __blitzideePrintDocuments?: Record<string, StoredPrintDocument> };
+
+export function printElementInNewWindow(options: { element: HTMLElement; css: string; title: string; requiredText: string[] }) {
+  if (activePrintWindow && !activePrintWindow.closed) activePrintWindow.close();
+  const key = `blitzidee-print-${crypto.randomUUID()}`;
+  const payload: StoredPrintDocument = { markup: options.element.outerHTML, css: options.css, title: options.title, requiredText: options.requiredText };
+  const host = window as PrintHostWindow;
+  host.__blitzideePrintDocuments ||= {};
+  host.__blitzideePrintDocuments[key] = payload;
+  localStorage.setItem(key, JSON.stringify(payload));
+  const view = window.open(`/print-document?key=${encodeURIComponent(key)}`, "_blank");
+  if (!view) { delete host.__blitzideePrintDocuments[key]; localStorage.removeItem(key); throw new Error("Das Druckfenster wurde blockiert. Bitte Pop-ups für diese App erlauben."); }
+  activePrintWindow = view;
+  window.setTimeout(() => { delete host.__blitzideePrintDocuments?.[key]; localStorage.removeItem(key); }, 120_000);
 }

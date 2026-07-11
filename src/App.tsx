@@ -14,6 +14,7 @@ import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { ensureCustomerNumbers } from "./lib/customerNumbers";
 import { catchUpRecurringExpenses } from "./lib/recurringExpenses";
+import { PrintDocument } from "./pages/PrintDocument";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -29,6 +30,7 @@ export default function App() {
     }).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, []);
   const company = useLiveQuery(() => db.company.get("company"), [], undefined);
+  if (window.location.pathname === "/print-document") return <PrintDocument />;
   if (error) return <main className="fatal"><h1>Die App konnte nicht gestartet werden</h1><p>{error}</p></main>;
   if (!ready || company === undefined) return <main className="splash"><img src="/logo-schrift.png" alt="Photographie Blitzidee" /><p>Datenbank wird sicher geöffnet …</p></main>;
   if (!company?.confirmedAt) return <SetupWizard company={company!} />;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2 - 2026-07-11
+
+- mobilen Druckpfad für iPhone, iPad und Android von verstecktem 1-Pixel-`iframe` auf ein eigenständiges Druckfenster umgestellt
+- Druckfenster wird unmittelbar durch die Nutzeraktion geöffnet und erst nach vollständig geladenem A4-Dokument gedruckt
+- Druckdaten werden in isolierten PWA-/WebView-Kontexten direkt vom öffnenden App-Fenster übernommen; lokaler Speicher dient als Browser-Fallback
+- Rechnung und Gewinn-/Verlustermittlung bleiben vollständig vom responsiven App-DOM getrennt
+- Rechnungs- und Entwurfsnummern brechen innerhalb ihres Metadatenfelds um und laufen nicht mehr über den linken Seitenrand
+- bestehende Druckfenster werden vor erneutem Drucken geschlossen und nach dem Druck automatisch aufgeräumt
+
 ## 0.4.1 - 2026-07-11
 
 - Rechnungsdruck vollständig vom responsiven App-DOM getrennt

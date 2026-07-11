@@ -1,6 +1,6 @@
 # Version
 
-Aktuelle Version: **0.4.1**  
+Aktuelle Version: **0.4.2**  
 Datenbankschema: **4**  
 Backupformat: **1**
 

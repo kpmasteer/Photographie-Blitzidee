@@ -17,6 +17,7 @@ describe("isoliertes A4-Druckdokument", () => {
       expect(css).not.toMatch(/\b(vw|vh)\b/);
       expect(css).not.toMatch(/transform\s*:\s*scale|\bzoom\s*:/);
     }
+    expect(INVOICE_PRINT_CSS).toContain("overflow-wrap: anywhere");
   });
 
   it("erzeugt auch für die Jahresauswertung ein separates Dokument", () => {

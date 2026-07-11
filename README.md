@@ -1,6 +1,6 @@
 # Photographie Blitzidee Rechnungs-PWA
 
-Version 0.4.1 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Rechnungen und Gewinn-/Verlustauswertungen werden in eigenständigen, festen DIN-A4-Druckdokumenten erzeugt; Bildschirmgröße und App-Oberfläche beeinflussen den Ausdruck nicht. Kundendaten bleiben im jeweiligen Browserprofil und werden nicht ungefragt übertragen.
+Version 0.4.2 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Rechnungen und Gewinn-/Verlustauswertungen werden für zuverlässigen Mobil-Druck in einem eigenständigen, sichtbaren DIN-A4-Druckfenster erzeugt; Bildschirmgröße und App-Oberfläche beeinflussen den Ausdruck nicht. Kundendaten bleiben im jeweiligen Browserprofil und werden nicht ungefragt übertragen.
 
 ## Installation und Start
 

@@ -5,7 +5,7 @@ import { db } from "../db";
 import { euro } from "../lib/money";
 import { createAnnualReportPdf, downloadBlob } from "../lib/pdf";
 import { annualFigures } from "../lib/reporting";
-import { printElementInIsolatedFrame, REPORT_PRINT_CSS } from "../lib/standalonePrint";
+import { printElementInNewWindow, REPORT_PRINT_CSS } from "../lib/standalonePrint";
 
 export function Reports() {
   const invoices = useLiveQuery(() => db.invoices.toArray(), [], []);
@@ -34,7 +34,7 @@ export function Reports() {
     const report = document.getElementById("annual-report-root");
     if (!report) return;
     try {
-      await printElementInIsolatedFrame({ element: report, css: REPORT_PRINT_CSS, title: `Gewinn-Verlust ${year}`, requiredText: ["Gewinn-/Verlustübersicht", String(year)] });
+      await printElementInNewWindow({ element: report, css: REPORT_PRINT_CSS, title: `Gewinn-Verlust ${year}`, requiredText: ["Gewinn-/Verlustübersicht", String(year)] });
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : "Das Druckdokument konnte nicht erstellt werden.");
     }
