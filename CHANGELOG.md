@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.5 - 2026-07-11
+
+- Desktopdruck von Rechnungen und Gewinn-/Verlustermittlung ebenfalls auf die textbasierte A4-PDF umgestellt
+- browserabhängige Drucklinien und HTML-Kopf-/Fußartefakte aus dem Rechnungsdruck entfernt
+- Gewinn-/Verlust-PDF um proportionales Logo, Unternehmenskopf, Ergebnisblöcke und Ausgabenkategorien erweitert
+- lange Kategorien werden bei Bedarf sauber auf echte PDF-Folgeseiten verteilt statt abgeschnitten
+- PDF-Druckdateien enthalten eine Druckanweisung und öffnen sich auf Desktop im PDF-Viewer
+- Mengen-, Einheiten- und Preisfelder verwenden auf Smartphones jeweils die volle verfügbare Breite
+- mobile Zahlenfelder verwenden 16-Pixel-Schrift und bleiben auch bei kleinen Displays lesbar
+
 ## 0.4.4 - 2026-07-11
 
 - Druckbutton innerhalb der Rechnungsvorschau auf denselben mobilen PDF-Systemdruck wie der direkte Druckbutton umgestellt
