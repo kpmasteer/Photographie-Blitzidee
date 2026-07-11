@@ -3,9 +3,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Download, Printer } from "lucide-react";
 import { db } from "../db";
 import { euro } from "../lib/money";
-import { createAnnualReportPdf, downloadBlob, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
+import { createAnnualReportPdf, downloadBlob, openPdfInWindow, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 import { annualFigures } from "../lib/reporting";
-import { printElementInNewWindow, REPORT_PRINT_CSS } from "../lib/standalonePrint";
 
 export function Reports() {
   const invoices = useLiveQuery(() => db.invoices.toArray(), [], []);
@@ -34,16 +33,18 @@ export function Reports() {
   };
   const print = async () => {
     if (!company) return;
+    const nativeShare = prefersNativePdfShare();
+    const viewer = nativeShare ? null : window.open("", "_blank");
     try {
-      if (prefersNativePdfShare()) {
+      if (nativeShare) {
         const result = await createAnnualReportPdf(year, company, payments, invoices, expenses);
         if (!(await sharePdfFile(result.blob, result.filename, `Gewinn-/Verlustübersicht ${year}`, "Zum Drucken im Menü bitte „Drucken“ auswählen."))) downloadBlob(result.blob, result.filename);
         return;
       }
-      const report = document.getElementById("annual-report-root");
-      if (!report) throw new Error("Das Druckdokument ist nicht verfügbar.");
-      await printElementInNewWindow({ element: report, css: REPORT_PRINT_CSS, title: `Gewinn-Verlust ${year}`, requiredText: ["Gewinn-/Verlustübersicht", String(year)] });
+      const result = await createAnnualReportPdf(year, company, payments, invoices, expenses, true);
+      if (!openPdfInWindow(result.blob, viewer)) { downloadBlob(result.blob, result.filename); throw new Error("Das Druckfenster wurde blockiert. Die PDF wurde stattdessen gespeichert."); }
     } catch (cause) {
+      if (viewer && !viewer.closed && viewer.location.href === "about:blank") viewer.close();
       window.alert(cause instanceof Error ? cause.message : "Das Druckdokument konnte nicht erstellt werden.");
     }
   };

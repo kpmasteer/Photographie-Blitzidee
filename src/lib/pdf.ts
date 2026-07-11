@@ -23,7 +23,7 @@ export function fitDimensions(width: number, height: number, maxWidth: number, m
   return { width: width * scale, height: height * scale };
 }
 
-export async function createInvoicePdf(invoice: Invoice, customer: Customer | undefined, company: Company): Promise<{ blob: Blob; filename: string }> {
+export async function createInvoicePdf(invoice: Invoice, customer: Customer | undefined, company: Company, autoPrint = false): Promise<{ blob: Blob; filename: string }> {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   const margin = 18;
   const pageWidth = 210;
@@ -150,6 +150,7 @@ export async function createInvoicePdf(invoice: Invoice, customer: Customer | un
     doc.text([company.bankName, `IBAN ${company.iban}`, `BIC ${company.bic}`], 82, 280, { lineHeightFactor: 1.25 });
     doc.text([company.email, company.phone, `Seite ${page} / ${pages}`].filter(Boolean), 192, 280, { align: "right", lineHeightFactor: 1.25 });
   }
+  if (autoPrint) doc.autoPrint({ variant: "non-conform" });
   const filename = `Rechnung_${safeName(invoice.invoiceNumber || invoice.draftNumber)}_${safeName(customerName)}.pdf`;
   return { blob: doc.output("blob"), filename };
 }
@@ -162,6 +163,14 @@ export function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+export function openPdfInWindow(blob: Blob, view: Window | null) {
+  if (!view) return false;
+  const url = URL.createObjectURL(blob);
+  view.location.replace(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  return true;
+}
+
 export const prefersNativePdfShare = () => navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)").matches;
 
 export async function sharePdfFile(blob: Blob, filename: string, title: string, text: string) {
@@ -171,30 +180,47 @@ export async function sharePdfFile(blob: Blob, filename: string, title: string, 
   return true;
 }
 
-export async function createAnnualReportPdf(year: number, company: Company, payments: Payment[], invoices: Invoice[], expenses: Expense[]) {
+export async function createAnnualReportPdf(year: number, company: Company, payments: Payment[], invoices: Invoice[], expenses: Expense[], autoPrint = false) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const income = payments.filter((p) => p.paidAt.startsWith(String(year))).reduce((sum, p) => sum + p.amountCents, 0);
   const costs = expenses.filter((e) => !e.cancelled && e.paidAt.startsWith(String(year))).reduce((sum, e) => sum + e.deductibleCents, 0);
   const open = invoices.filter((i) => i.year === year && !["paid", "cancelled"].includes(i.status)).reduce((sum, i) => sum + i.totalCents, 0);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text("Gewinn-/Verlustübersicht", 18, 22);
-  doc.setFontSize(11); doc.text(`${company.name} · ${company.owner}`, 18, 31);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(`Kalenderjahr ${year} · 01.01.${year} bis 31.12.${year}`, 18, 39);
+  try {
+    const logo = await loadImage("/Logo Photographie Blitzidee Neu.png");
+    const properties = doc.getImageProperties(logo); const size = fitDimensions(properties.width, properties.height, 58, 24);
+    doc.addImage(logo, "PNG", 18, 12, size.width, size.height, undefined, "FAST");
+  } catch { /* Vollständiger Textkopf bleibt erhalten. */ }
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(company.name, 192, 17, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text([company.owner, company.street, `${company.postalCode} ${company.city}`, company.email].filter(Boolean), 192, 23, { align: "right", lineHeightFactor: 1.3 });
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text(`Gewinn-/Verlustübersicht ${year}`, 18, 48);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`01.01.${year} bis 31.12.${year}`, 18, 55);
   const rows = [["Erhaltene Betriebseinnahmen", income], ["Betriebsausgaben", -costs], [income - costs >= 0 ? "Gewinn" : "Verlust", income - costs], ["Offene Forderungen (separat)", open]] as const;
-  let y = 56;
+  let y = 68;
   rows.forEach(([label, value], index) => {
-    if (index === 2) doc.setFont("helvetica", "bold");
-    doc.text(label, 22, y); doc.text(euro(value), 190, y, { align: "right" }); y += 10;
+    doc.setFillColor(index === 2 ? 232 : 247, index === 2 ? 241 : 243, index === 2 ? 236 : 239); doc.rect(18, y - 6, 174, 9, "F");
+    if (index === 2) doc.setFont("helvetica", "bold"); doc.setFontSize(index === 2 ? 10 : 9);
+    doc.text(label, 21, y); doc.text(euro(value), 189, y, { align: "right" }); y += 11;
     doc.setFont("helvetica", "normal");
   });
-  y += 8; doc.setFontSize(9); doc.text("Monat", 22, y); doc.text("Einnahmen", 92, y, { align: "right" }); doc.text("Ausgaben", 140, y, { align: "right" }); doc.text("Ergebnis", 190, y, { align: "right" }); y += 7;
+  y += 5; doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Monatsübersicht", 18, y); y += 6;
+  doc.setFillColor(239, 229, 218); doc.rect(18, y - 4, 174, 7, "F"); doc.setFontSize(8); doc.text("Monat", 21, y); doc.text("Einnahmen", 92, y, { align: "right" }); doc.text("Ausgaben", 140, y, { align: "right" }); doc.text("Ergebnis", 189, y, { align: "right" }); y += 7;
+  doc.setFont("helvetica", "normal");
   for (let month = 1; month <= 12; month++) {
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
     const monthIncome = payments.filter((p) => p.paidAt.startsWith(prefix)).reduce((sum, p) => sum + p.amountCents, 0);
     const monthCosts = expenses.filter((e) => !e.cancelled && e.paidAt.startsWith(prefix)).reduce((sum, e) => sum + e.deductibleCents, 0);
-    doc.text(new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(year, month - 1)), 22, y);
-    doc.text(euro(monthIncome), 92, y, { align: "right" }); doc.text(euro(monthCosts), 140, y, { align: "right" }); doc.text(euro(monthIncome - monthCosts), 190, y, { align: "right" }); y += 7;
+    doc.text(new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(year, month - 1)), 21, y);
+    doc.text(euro(monthIncome), 92, y, { align: "right" }); doc.text(euro(monthCosts), 140, y, { align: "right" }); doc.text(euro(monthIncome - monthCosts), 189, y, { align: "right" }); y += 6;
   }
+  const categories = [...expenses.filter((expense) => !expense.cancelled && expense.paidAt.startsWith(String(year))).reduce((map, expense) => map.set(expense.category, (map.get(expense.category) || 0) + expense.deductibleCents), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  y += 4; doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Ausgaben nach Kategorien", 18, y); y += 6; doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  for (const [category, value] of categories) {
+    if (y > 263) { doc.addPage(); y = 20; }
+    doc.text(category || "Nicht zugeordnet", 21, y); doc.text(euro(value), 189, y, { align: "right" }); y += 6;
+  }
+  if (!categories.length) { doc.text("Keine Ausgaben in diesem Jahr.", 21, y); y += 6; }
   doc.setFontSize(8); doc.text("Diese Auswertung dient der internen Übersicht und ersetzt keine steuerliche Beratung oder die amtliche Anlage EÜR.", 18, 276);
+  if (autoPrint) doc.autoPrint({ variant: "non-conform" });
   const blob = doc.output("blob");
   return { blob, filename: `Gewinn-Verlust_${year}.pdf` };
 }

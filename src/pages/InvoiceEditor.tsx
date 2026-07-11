@@ -7,9 +7,7 @@ import { addDays, formatDate } from "../lib/date";
 import { euro, openAmount, parseEuroToCents, parsePriceInput } from "../lib/money";
 import { calculateInvoice } from "../lib/invoiceCalculation";
 import { InvoicePreview } from "../components/InvoicePreview";
-import { createInvoicePdf, downloadBlob, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
-import { flushSync } from "react-dom";
-import { printInvoiceDocument } from "../lib/printInvoice";
+import { createInvoicePdf, downloadBlob, openPdfInWindow, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 import { makeDraft } from "../lib/seed";
 import type { Company, Invoice, InvoiceItem, InvoiceStatus, Payment } from "../types";
 
@@ -113,17 +111,20 @@ export function InvoiceEditor() {
   };
   const print = async () => {
     if (form?.status !== "draft" && !form?.invoiceNumber) return setErrors(["Eine finalisierte Rechnung benötigt vor dem Drucken eine gültige Rechnungsnummer."]);
+    const nativeShare = prefersNativePdfShare();
+    const viewer = nativeShare ? null : window.open("", "_blank");
     setBusy(true); setErrors([]);
     try {
-      if (prefersNativePdfShare()) {
+      if (nativeShare) {
         const result = await getPdf();
         const shared = await sharePdfFile(result.blob, result.filename, `Rechnung ${form?.invoiceNumber || form?.draftNumber}`, "Zum Drucken im Menü bitte „Drucken“ auswählen.");
         if (!shared) { downloadBlob(result.blob, result.filename); setMessage("Die druckfertige PDF wurde gespeichert. Bitte im PDF-Viewer öffnen und dort drucken."); }
       } else {
-        flushSync(() => setShowPreview(true));
-        await printInvoiceDocument();
+        const result = await createInvoicePdf(form!, selectedCustomer, company!, true);
+        if (!openPdfInWindow(result.blob, viewer)) { downloadBlob(result.blob, result.filename); throw new Error("Das Druckfenster wurde blockiert. Die PDF wurde stattdessen gespeichert."); }
       }
     } catch (cause) {
+      if (viewer && !viewer.closed && viewer.location.href === "about:blank") viewer.close();
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setErrors([cause instanceof Error ? cause.message : "Das Dokument konnte nicht gedruckt werden."]);
     } finally { setBusy(false); }

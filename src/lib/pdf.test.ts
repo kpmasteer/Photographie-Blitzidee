@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Company, Invoice } from "../types";
-import { createInvoicePdf, fitDimensions } from "./pdf";
+import { createAnnualReportPdf, createInvoicePdf, fitDimensions } from "./pdf";
 
 const company: Company = {
   id: "company", name: "Photographie Blitzidee", owner: "Lidia Lang", street: "Teststraße 1", postalCode: "12345", city: "Teststadt", country: "Deutschland",
@@ -31,5 +31,15 @@ describe("textbasierte Rechnungs-PDF", () => {
     expect(result.blob.type).toBe("application/pdf");
     expect(result.blob.size).toBeGreaterThan(1_000);
     expect(signature).toBe("%PDF-");
+  });
+
+  it("erzeugt eine vollständige Gewinn-/Verlust-PDF mit Druckanweisung", async () => {
+    const result = await createAnnualReportPdf(2026, company, [], [invoice], [], true);
+    const content = new TextDecoder("latin1").decode(await result.blob.arrayBuffer());
+    expect(result.filename).toBe("Gewinn-Verlust_2026.pdf");
+    expect(result.blob.type).toBe("application/pdf");
+    expect(result.blob.size).toBeGreaterThan(2_000);
+    expect(content.slice(0, 5)).toBe("%PDF-");
+    expect(content).toContain("OpenAction");
   });
 });

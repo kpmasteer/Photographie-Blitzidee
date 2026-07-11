@@ -1,8 +1,7 @@
 import type { Company, Customer, Invoice } from "../types";
 import { euro } from "../lib/money";
 import { formatDate } from "../lib/date";
-import { printInvoiceDocument } from "../lib/printInvoice";
-import { createInvoicePdf, downloadBlob, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
+import { createInvoicePdf, downloadBlob, openPdfInWindow, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 
 const clientData = (invoice: Invoice, customer?: Customer) => invoice.customerSnapshot || (customer ? { displayName: [customer.firstName, customer.lastName].filter(Boolean).join(" ") || customer.company || "", company: customer.company, street: customer.street, postalCode: customer.postalCode, city: customer.city, country: customer.country } : undefined);
 
@@ -23,14 +22,17 @@ export function InvoiceDocument({ invoice, customer, company }: { invoice: Invoi
 
 export function InvoicePreview(props: { invoice: Invoice; customer?: Customer; company: Company; onClose: () => void }) {
   const print = async () => {
+    const nativeShare = prefersNativePdfShare();
+    const viewer = nativeShare ? null : window.open("", "_blank");
     try {
-      if (prefersNativePdfShare()) {
-        const result = await createInvoicePdf(props.invoice, props.customer, props.company);
+      const result = await createInvoicePdf(props.invoice, props.customer, props.company, !nativeShare);
+      if (nativeShare) {
         const shared = await sharePdfFile(result.blob, result.filename, `Rechnung ${props.invoice.invoiceNumber || props.invoice.draftNumber}`, "Zum Drucken im Menü bitte „Drucken“ auswählen.");
         if (!shared) downloadBlob(result.blob, result.filename);
-      } else await printInvoiceDocument();
+      } else if (!openPdfInWindow(result.blob, viewer)) { downloadBlob(result.blob, result.filename); throw new Error("Das Druckfenster wurde blockiert. Die PDF wurde stattdessen gespeichert."); }
     }
     catch (cause) {
+      if (viewer && !viewer.closed && viewer.location.href === "about:blank") viewer.close();
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       window.alert(cause instanceof Error ? cause.message : "Das Rechnungsdokument konnte nicht gedruckt werden.");
     }
