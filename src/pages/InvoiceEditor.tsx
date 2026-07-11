@@ -36,6 +36,14 @@ export function InvoiceEditor() {
   const [form, setForm] = useState<Invoice>(); const [message, setMessage] = useState(""); const [errors, setErrors] = useState<string[]>([]); const [busy, setBusy] = useState(false);
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({}); const [discountInputs, setDiscountInputs] = useState<Record<string, string>>({}); const [itemErrors, setItemErrors] = useState<Record<string, string[]>>({}); const [showPreview, setShowPreview] = useState(false);
   const declinedTemplateTexts = useRef(new Set<string>());
+  useEffect(() => {
+    const selectQuantity = (event: FocusEvent) => {
+      const input = event.target;
+      if (input instanceof HTMLInputElement && input.type === "number" && input.step === "0.001") input.select();
+    };
+    document.addEventListener("focusin", selectQuantity);
+    return () => document.removeEventListener("focusin", selectQuantity);
+  }, []);
   useEffect(() => { if (stored) setForm(stored); else if (!invoiceId && company && !form) setForm(makeDraft(company, searchParams.get("customer") || "")); }, [stored, invoiceId, company, form, searchParams]);
   const editable = form?.status === "draft";
   const selectedCustomer = customers.find((customer) => customer.id === form?.customerId);

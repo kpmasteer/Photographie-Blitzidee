@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.11 - 2026-07-11
+
+- vorhandener Mengenwert wird beim Anklicken oder Antippen vollständig markiert
+- nächste Tastatur- oder Touch-Eingabe überschreibt die bisherige Menge unmittelbar
+- Fokuslogik wirkt ausschließlich auf Mengenfelder und verändert Zahlungsziel oder andere Zahlenfelder nicht
+
 ## 0.4.10 - 2026-07-11
 
 - Zahlungsstand bei neuen Rechnungen und Entwürfen ausgeblendet
