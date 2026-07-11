@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.10 - 2026-07-11
+
+- Zahlungsstand bei neuen Rechnungen und Entwürfen ausgeblendet
+- Rechnungseditor nutzt im Entwurfsstatus die gesamte verfügbare Breite
+- Zahlungsstand bei finalisierten Rechnungen unter die Rechnungsdaten verschoben
+- Zahlungsschaltfläche eindeutig als `Teilzahlung / Zahlung erfassen` bezeichnet
+- beliebige positive Teilbeträge bis zum offenen Rechnungsbetrag können direkt verbucht werden
+- Zahlungsdatum und Zahlungsart werden bei jeder Zahlung erfasst
+- Status wechselt bei Teilbeträgen auf `Teilbezahlt` und bei vollständigem Ausgleich auf `Bezahlt`
+- vorhandene Zahlungen bleiben mit Datum, Betrag und Zahlungsart sichtbar
+
 ## 0.4.9 - 2026-07-11
 
 - separates Feld für Beschreibungsvorlagen und Beschreibung zu einem editierbaren Kombinationsfeld zusammengeführt

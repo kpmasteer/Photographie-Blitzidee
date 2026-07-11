@@ -53,6 +53,10 @@
 .editable-choice>select { padding:0 6px; text-indent:-9999px; background-color:var(--paper); }
 .editable-choice>textarea { min-height:76px; }
 .position-discounts,.editor-form>.discount-controls { background:color-mix(in srgb,var(--tint) 35%,var(--paper)); border-color:var(--line); }
+.editor-grid.draft-editor,.editor-grid.finalized-editor { grid-template-columns:minmax(0,1fr); }
+.draft-editor>.editor-aside { display:none; }
+.finalized-editor>.editor-aside { order:initial; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+@media (max-width:700px) { .finalized-editor>.editor-aside { grid-template-columns:1fr; } }
 .draft-actions { display: flex; justify-content: flex-end; margin: -1rem 0 1rem; }
 .recurring-section { margin-top: 1rem; }
 .compact-invoice-toolbar .search { min-width: min(100%,320px); }
