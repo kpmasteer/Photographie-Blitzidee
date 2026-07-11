@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 - 2026-07-11
+
+- Absturz bei festem Gesamtrabatt behoben und Rabattberechnung zentralisiert
+- feste Positionsrabatte als stabile Stringeingabe mit später Centnormalisierung
+- Entwurfsdruck auf das Rechnungsdokument isoliert
+- festes geräteunabhängiges DIN-A4-Rechnungslayout
+- gemeinsame `InvoiceDocument`-Komponente für Vorschau und Druck; PDF nutzt dieselben normalisierten Daten
+- Rechnungsnummer beziehungsweise Entwurfsnummer sichtbar
+- Juli-Einnahmen mit Zahlungseingang und Importquelle diagnostizierbar
+- mobile Einstellungen direkt in der unteren Navigation erreichbar
+- Freitextbeschreibung bleibt dauerhaft neben optionaler Vorlage verfügbar
+- kompakte Sortier- und Filterdialoge für Rechnungen
+- geschützte Testdaten-, Importquellen- und Gesamtrücksetzung
+- Website-Link ergänzt
+- Repository- und Auth-Schnittstellen sowie Multi-Geräte-/Datenschutzarchitektur vorbereitet
+
 ## 0.3.0 - 2026-07-10
 
 - Rechnungsentwürfe können im Editor sicher gelöscht werden
