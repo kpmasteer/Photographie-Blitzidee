@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 - 2026-07-11
+
+- Rechnungsdruck vollständig vom responsiven App-DOM getrennt
+- temporäres, eigenständiges A4-Druckdokument mit kontrolliertem Laden von Logo und Schriftarten
+- geräteunabhängige Seitengeometrie ohne Viewport-Skalierung
+- zusätzliche leere Druckseiten durch App-Container und CSS-Wechselwirkungen verhindert
+- Gewinn-/Verlustermittlung als eigenes druckfähiges A4-Dokument statt Ausdruck der Eingabeseite
+- Druckinhalt wird vor dem Öffnen des Druckdialogs auf Pflichtinhalte und messbare Höhe geprüft
+
 ## 0.4.0 - 2026-07-11
 
 - Absturz bei festem Gesamtrabatt behoben und Rabattberechnung zentralisiert

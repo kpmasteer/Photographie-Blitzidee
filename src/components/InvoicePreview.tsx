@@ -21,5 +21,9 @@ export function InvoiceDocument({ invoice, customer, company }: { invoice: Invoi
 }
 
 export function InvoicePreview(props: { invoice: Invoice; customer?: Customer; company: Company; onClose: () => void }) {
-  return <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Rechnungsvorschau"><div className="preview-toolbar print-hide"><button type="button" className="secondary" onClick={props.onClose}>Zurück</button><button type="button" className="primary" onClick={() => void printInvoiceDocument()}>Drucken</button><span>Feste DIN-A4-Vorschau · Zoomen und Scrollen möglich</span></div><div className="invoice-preview-stage"><InvoiceDocument invoice={props.invoice} customer={props.customer} company={props.company} /></div></div>;
+  const print = async () => {
+    try { await printInvoiceDocument(); }
+    catch (cause) { window.alert(cause instanceof Error ? cause.message : "Das Rechnungsdokument konnte nicht gedruckt werden."); }
+  };
+  return <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Rechnungsvorschau"><div className="preview-toolbar print-hide"><button type="button" className="secondary" onClick={props.onClose}>Zurück</button><button type="button" className="primary" onClick={() => void print()}>Drucken</button><span>Feste DIN-A4-Vorschau · Zoomen und Scrollen möglich</span></div><div className="invoice-preview-stage"><InvoiceDocument invoice={props.invoice} customer={props.customer} company={props.company} /></div></div>;
 }
