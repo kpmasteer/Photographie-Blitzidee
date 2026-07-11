@@ -14,6 +14,6 @@ export function Layout({ children }: { children: ReactNode }) {
     <aside className="sidebar" aria-label="Hauptnavigation"><img className="brand" src="/logo-schrift.png" alt="Photographie Blitzidee" />{links.map(([to, label, Icon]) => <NavLink key={to} to={to} end={to === "/"}><Icon aria-hidden="true" /><span>{label}</span></NavLink>)}</aside>
     <main className="content">{children}</main>
     <PaymentReminder />
-    <nav className="bottom-nav" aria-label="Hauptnavigation">{links.slice(0, 5).map(([to, label, Icon]) => <NavLink key={to} to={to} end={to === "/"}><Icon aria-hidden="true" /><span>{label}</span></NavLink>)}</nav>
+    <nav className="bottom-nav" aria-label="Hauptnavigation">{[...links.slice(0, 4), links[5]!].map(([to, label, Icon]) => <NavLink key={to} to={to} end={to === "/"}><Icon aria-hidden="true" /><span>{label}</span></NavLink>)}</nav>
   </div>;
 }

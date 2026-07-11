@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "prompt",
-      includeAssets: ["icons/*.png", "logo-rechnung.png", "logo-rechnung.jpg"],
+      includeAssets: ["icons/*.png", "Logo Photographie Blitzidee Neu.png", "logo-rechnung.png", "logo-rechnung.jpg"],
       manifest: {
         name: "Photographie Blitzidee Rechnungen",
         short_name: "Blitzidee",

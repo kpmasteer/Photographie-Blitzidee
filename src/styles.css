@@ -23,9 +23,10 @@
 @media(max-width:520px){.payment-reminder{padding:22px}.payment-reminder h2{font-size:25px}.snooze-actions{grid-template-columns:1fr}.snooze-actions .secondary{width:100%}}
 .field-errors { color: #a32626; grid-column: 1 / -1; margin: 0; font-size: .85rem; }
 .item-card.invalid { outline: 2px solid #b33a3a; }
-.preview-overlay { position: fixed; inset: 0; z-index: 1000; max-width: 100vw; box-sizing: border-box; background: #303030ee; overflow-y: auto; overflow-x: hidden; padding: 1rem; }
+.preview-overlay { position: fixed; inset: 0; z-index: 1000; max-width: 100vw; box-sizing: border-box; background: #303030ee; overflow: auto; padding: 1rem; }
 .preview-toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; gap: 1rem; max-width: 210mm; margin: 0 auto 1rem; padding: .6rem; border-radius: .7rem; background: white; color: #222; }
 .invoice-preview-page { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm; margin: auto; padding: 20mm 18mm; background: white; color: #222; box-shadow: 0 1rem 4rem #0008; font: 10pt/1.5 Arial,sans-serif; overflow: hidden; }
+.invoice-preview-stage { width: max-content; min-width: 100%; transform-origin: top center; }
 .draft-watermark { position: absolute; top: 45%; left: 5%; right: 5%; transform: rotate(-24deg); color: #b0002030; font-size: 28pt; font-weight: 800; text-align: center; }
 .preview-head { display: flex; justify-content: space-between; gap: 2rem; align-items: start; }
 .preview-head img { width: 72mm; max-height: 30mm; object-fit: contain; object-position: left top; }
@@ -41,10 +42,15 @@
 .discount-controls { display: grid; grid-template-columns: repeat(2,minmax(160px,240px)); justify-content: end; gap: .75rem; margin-top: 1rem; }
 .draft-actions { display: flex; justify-content: flex-end; margin: -1rem 0 1rem; }
 .recurring-section { margin-top: 1rem; }
-@media (max-width: 850px) { .preview-overlay { padding: .5rem; } .preview-toolbar { flex-direction: column; align-items: stretch; } .invoice-preview-page { width: calc(100vw - 1rem); max-width: 100%; min-height: 0; padding: 1rem; font-size: 8.5pt; overflow-x: auto; } .preview-head { flex-direction: column; } .preview-head img { width: 70%; } .preview-address { margin: 2rem 0; } .preview-meta { flex-direction: column; } .invoice-preview-page footer { position: static; margin-top: 2rem; } }
-@media print { .preview-overlay { position: static; padding: 0; background: white; } .preview-toolbar { display: none; } .invoice-preview-page { box-shadow: none; margin: 0; page-break-after: always; } }
+.compact-invoice-toolbar .search { min-width: min(100%,320px); }
+.compact-modal { width: min(520px,100%); }
+.sort-options,.danger-actions { display:grid;gap:.65rem;margin-top:1rem; }
+.sort-options button { justify-content:flex-start; }
+.income-diagnostics { margin-bottom:1rem; }
+@media (max-width: 850px) { .preview-overlay { padding: .5rem; } .preview-toolbar { width: calc(100vw - 1rem); flex-direction: column; align-items: stretch; } }
+@media print { body:has(#invoice-print-root) * { visibility: hidden!important; } #invoice-print-root,#invoice-print-root * { visibility: visible!important; } #invoice-print-root { position:absolute;left:0;top:0;width:210mm;min-height:297mm;margin:0;padding:20mm 18mm;box-shadow:none;overflow:visible; } .preview-overlay { position:static;padding:0;background:white;overflow:visible; } .preview-toolbar { display:none!important; } }
 @media print {
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 0; }
   .annual-report { width: 190mm; min-height: 0; padding: 5mm 6mm; font-size: 8.5pt; overflow: visible; }
   .annual-report>header { padding-bottom: 3mm; }
   .annual-report>header h1 { font-size: 18pt; }
@@ -59,5 +65,5 @@
   .category-list>div { font-size: 7.5pt; }
   .report-notes { margin-top: 3mm; }
   .annual-report footer { position: static; margin-top: 3mm; padding-top: 2mm; }
-  .invoice-document { width: 190mm; min-height: 277mm; padding: 10mm 8mm; }
+  .invoice-document { width: 210mm; min-height: 297mm; padding: 20mm 18mm; }
 }

@@ -126,6 +126,12 @@ export interface Payment {
   method: string;
   note?: string;
   createdAt: string;
+  importId?: string;
+  importSource?: string;
+  sourceFile?: string;
+  sourceSheet?: string;
+  sourceRow?: number;
+  importFingerprint?: string;
 }
 
 export interface Expense {
@@ -163,6 +169,10 @@ export interface Expense {
   periodKey?: string;
   automaticallyGenerated?: boolean;
   confirmationStatus?: "pending" | "confirmed";
+  importId?: string;
+  sourceFile?: string;
+  sourceSheet?: string;
+  sourceRow?: number;
 }
 
 export type RecurrenceInterval = "monthly" | "bimonthly" | "quarterly" | "semiannual" | "yearly" | "custom";
