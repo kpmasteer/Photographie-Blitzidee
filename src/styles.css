@@ -84,3 +84,19 @@
   .annual-report footer { position: static; margin-top: 3mm; padding-top: 2mm; }
   .invoice-document { width: 209.5mm; min-height: 296mm; padding: 18mm 18mm 14mm; }
 }
+
+/* Positionseditor: explizite Desktopspalten verhindern implizite Felder außerhalb der Karte. */
+@media (min-width: 1151px) {
+  .item-card { grid-template-columns:28px minmax(0,1.4fr) minmax(0,1.2fr) minmax(70px,.5fr) minmax(90px,.7fr) minmax(90px,.7fr) minmax(75px,.5fr); overflow:hidden; }
+  .item-card > label { min-width:0; }
+  .item-card > label input,.item-card > label select,.item-card > label textarea { min-width:0; max-width:100%; }
+  .item-card > strong { min-width:0; grid-column:7; }
+  .item-card > .item-actions { grid-column:2 / span 2; }
+}
+@media (min-width: 901px) and (max-width: 1150px) {
+  .item-card { grid-template-columns:28px minmax(0,1fr) minmax(120px,.55fr); overflow:hidden; }
+  .item-card > label { min-width:0; }
+  .item-card > label input,.item-card > label select,.item-card > label textarea { min-width:0; max-width:100%; }
+  .item-card > strong { grid-column:3; }
+  .item-card > .item-actions { grid-column:2; }
+}

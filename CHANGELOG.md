@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.8 - 2026-07-11
+
+- Einheitenfeld um schnelle Vorschläge für `Pauschale` und `Bilder` erweitert
+- Vorschlagsliste ist direkt über den Pfeil beziehungsweise die native Auswahlanzeige des Textfelds erreichbar
+- freie Eingabe eigener Einheiten bleibt uneingeschränkt möglich
+- bestehende und importierte individuelle Einheitentexte bleiben unverändert
+
+## 0.4.7 - 2026-07-11
+
+- Desktop-Grid des Positionseditors an die tatsächliche Anzahl von Feldern einschließlich Beschreibungsvorlage angepasst
+- Einzelpreisfeld liegt nicht mehr außerhalb der Positionskarte oder unter dem benachbarten Seitenbereich
+- alle Eingaben werden auf die Breite ihrer Grid-Zelle begrenzt und bleiben anklickbar
+- separate robuste Anordnung für breite Desktopfenster und mittlere Desktop-/Tabletbreiten ergänzt
+- Summe sowie Duplizieren- und Löschen-Aktionen bleiben innerhalb der jeweiligen Position
+
 ## 0.4.6 - 2026-07-11
 
 - Einzelpreiseingabe auf Desktop repariert: keine automatische Centumrechnung und keine verzögerte Textauswahl mehr während des Tippens

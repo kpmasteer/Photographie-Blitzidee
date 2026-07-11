@@ -1,6 +1,6 @@
 # Photographie Blitzidee Rechnungs-PWA
 
-Version 0.4.6 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Die Einzelpreiseingabe bleibt bis zum Verlassen des Feldes unverändert editierbar, Rabatte sind übersichtlich gruppiert und PDFs verwenden ein bereinigtes Logo ohne Bildartefakte. Kundendaten bleiben im jeweiligen Browserprofil und werden nicht ungefragt übertragen.
+Version 0.4.8 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Das Einheitenfeld bietet „Pauschale“ und „Bilder“ als schnelle auswählbare Vorschläge und bleibt zugleich vollständig als Freitextfeld nutzbar. Kundendaten bleiben im jeweiligen Browserprofil und werden nicht ungefragt übertragen.
 
 ## Installation und Start
 
