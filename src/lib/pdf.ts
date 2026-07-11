@@ -69,7 +69,7 @@ export async function createInvoicePdf(invoice: Invoice, customer: Customer | un
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text(invoice.cancelledInvoiceId ? "Stornorechnung" : "Rechnung", margin, 101);
+  doc.text(invoice.status === "draft" ? "RECHNUNGSENTWURF" : invoice.cancelledInvoiceId ? "Stornorechnung" : "Rechnung", margin, 101);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   const infoX = 125;
@@ -149,8 +149,18 @@ export async function createInvoicePdf(invoice: Invoice, customer: Customer | un
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url; link.download = filename; link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+  link.href = url; link.download = filename; link.rel = "noopener";
+  document.body.append(link); link.click(); link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+export const prefersNativePdfShare = () => navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)").matches;
+
+export async function sharePdfFile(blob: Blob, filename: string, title: string, text: string) {
+  const file = new File([blob], filename, { type: "application/pdf" });
+  if (!navigator.canShare?.({ files: [file] }) || !navigator.share) return false;
+  await navigator.share({ files: [file], title, text });
+  return true;
 }
 
 export async function createAnnualReportPdf(year: number, company: Company, payments: Payment[], invoices: Invoice[], expenses: Expense[]) {

@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { AppSetting, Attachment, AuditLog, Company, Customer, Expense, ImportLog, Invoice, Payment, RecurringExpense, ServiceTemplate } from "./types";
 
-export const APP_VERSION = "0.4.2";
+export const APP_VERSION = "0.4.3";
 export const DB_SCHEMA_VERSION = 4;
 
 class BlitzideeDatabase extends Dexie {

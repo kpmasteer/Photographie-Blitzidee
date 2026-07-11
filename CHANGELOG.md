@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3 - 2026-07-11
+
+- mobiler Rechnungsdruck auf textbasierte A4-PDF und natives Teilen-/Druckmenü von iOS, iPadOS und Android umgestellt
+- mobiler Druck der Gewinn-/Verlustermittlung nutzt denselben zuverlässigen PDF-Systemweg
+- Safari-anfällige PDF-Erzeugung über `jsPDF.html()`/`html2canvas` nach der Finalisierung durch direkte, textbasierte PDF-Erzeugung ersetzt
+- PDF-Schaltfläche nach Finalisierung repariert und sichtbare Fehlerbehandlung ergänzt
+- PDF-Download-Link wird browserkompatibel in den DOM eingefügt und erst nach längerer Frist freigegeben
+- bereits gespeicherte PDFs aus dem alten HTML-Rasterpfad werden beim Öffnen neu aus den unveränderlichen Rechnungsdaten erzeugt
+- Entwurfs-PDFs sind ausdrücklich als `RECHNUNGSENTWURF` gekennzeichnet
+
 ## 0.4.2 - 2026-07-11
 
 - mobilen Druckpfad für iPhone, iPad und Android von verstecktem 1-Pixel-`iframe` auf ein eigenständiges Druckfenster umgestellt

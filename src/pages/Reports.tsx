@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Download, Printer } from "lucide-react";
 import { db } from "../db";
 import { euro } from "../lib/money";
-import { createAnnualReportPdf, downloadBlob } from "../lib/pdf";
+import { createAnnualReportPdf, downloadBlob, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 import { annualFigures } from "../lib/reporting";
 import { printElementInNewWindow, REPORT_PRINT_CSS } from "../lib/standalonePrint";
 
@@ -27,13 +27,21 @@ export function Reports() {
 
   const pdf = async () => {
     if (!company) return;
-    const result = await createAnnualReportPdf(year, company, payments, invoices, expenses);
-    downloadBlob(result.blob, result.filename);
+    try {
+      const result = await createAnnualReportPdf(year, company, payments, invoices, expenses);
+      if (!(prefersNativePdfShare() && await sharePdfFile(result.blob, result.filename, `Gewinn-/Verlustübersicht ${year}`, "PDF speichern, öffnen oder weitergeben"))) downloadBlob(result.blob, result.filename);
+    } catch (cause) { if (!(cause instanceof DOMException && cause.name === "AbortError")) window.alert(cause instanceof Error ? cause.message : "Die PDF konnte nicht erstellt werden."); }
   };
   const print = async () => {
-    const report = document.getElementById("annual-report-root");
-    if (!report) return;
+    if (!company) return;
     try {
+      if (prefersNativePdfShare()) {
+        const result = await createAnnualReportPdf(year, company, payments, invoices, expenses);
+        if (!(await sharePdfFile(result.blob, result.filename, `Gewinn-/Verlustübersicht ${year}`, "Zum Drucken im Menü bitte „Drucken“ auswählen."))) downloadBlob(result.blob, result.filename);
+        return;
+      }
+      const report = document.getElementById("annual-report-root");
+      if (!report) throw new Error("Das Druckdokument ist nicht verfügbar.");
       await printElementInNewWindow({ element: report, css: REPORT_PRINT_CSS, title: `Gewinn-Verlust ${year}`, requiredText: ["Gewinn-/Verlustübersicht", String(year)] });
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : "Das Druckdokument konnte nicht erstellt werden.");

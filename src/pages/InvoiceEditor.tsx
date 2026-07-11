@@ -7,8 +7,7 @@ import { addDays, formatDate } from "../lib/date";
 import { euro, openAmount, parseEuroToCents, parsePriceInput } from "../lib/money";
 import { calculateInvoice } from "../lib/invoiceCalculation";
 import { InvoicePreview } from "../components/InvoicePreview";
-import { downloadBlob } from "../lib/pdf";
-import { createInvoiceDocumentPdf } from "../lib/invoiceDocumentPdf";
+import { createInvoicePdf, downloadBlob, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 import { flushSync } from "react-dom";
 import { printInvoiceDocument } from "../lib/printInvoice";
 import { makeDraft } from "../lib/seed";
@@ -90,7 +89,7 @@ export function InvoiceEditor() {
       });
       const hashInput = JSON.stringify({ ...finalized, pdfBlob: undefined });
       const contentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hashInput)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-      const { blob } = await createInvoiceDocumentPdf(finalized, customer, company);
+      const { blob } = await createInvoicePdf(finalized, customer, company);
       finalized = { ...finalized, contentHash, pdfBlob: blob };
       await db.invoices.update(finalized.id, { contentHash, pdfBlob: blob });
       setForm(finalized); setMessage(`Rechnung ${finalized.invoiceNumber} wurde finalisiert und ist nun unveränderlich.`);
@@ -99,11 +98,36 @@ export function InvoiceEditor() {
   const getPdf = async () => {
     if (!form || !company) throw new Error("Rechnung nicht geladen.");
     if (form.status !== "draft" && !form.invoiceNumber) throw new Error("Eine finalisierte Rechnung benötigt eine gültige Rechnungsnummer.");
-    if (form.pdfBlob) return { blob: form.pdfBlob, filename: `Rechnung_${form.invoiceNumber}.pdf` };
-    return createInvoiceDocumentPdf(form, selectedCustomer, company);
+    return createInvoicePdf(form, selectedCustomer, company);
   };
-  const download = async () => { const result = await getPdf(); downloadBlob(result.blob, result.filename); };
-  const print = async () => { if (form?.status !== "draft" && !form?.invoiceNumber) return setErrors(["Eine finalisierte Rechnung benötigt vor dem Drucken eine gültige Rechnungsnummer."]); flushSync(() => setShowPreview(true)); try { await printInvoiceDocument(); } catch (cause) { setErrors([cause instanceof Error ? cause.message : String(cause)]); } };
+  const download = async () => {
+    setBusy(true); setErrors([]);
+    try {
+      const result = await getPdf();
+      if (prefersNativePdfShare() && await sharePdfFile(result.blob, result.filename, `Rechnung ${form?.invoiceNumber || form?.draftNumber}`, "PDF speichern, öffnen oder weitergeben")) setMessage("Die PDF wurde an das Gerät übergeben.");
+      else { downloadBlob(result.blob, result.filename); setMessage("Die PDF wurde erstellt und gespeichert."); }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setErrors([cause instanceof Error ? cause.message : "Die PDF konnte nicht erstellt werden."]);
+    } finally { setBusy(false); }
+  };
+  const print = async () => {
+    if (form?.status !== "draft" && !form?.invoiceNumber) return setErrors(["Eine finalisierte Rechnung benötigt vor dem Drucken eine gültige Rechnungsnummer."]);
+    setBusy(true); setErrors([]);
+    try {
+      if (prefersNativePdfShare()) {
+        const result = await getPdf();
+        const shared = await sharePdfFile(result.blob, result.filename, `Rechnung ${form?.invoiceNumber || form?.draftNumber}`, "Zum Drucken im Menü bitte „Drucken“ auswählen.");
+        if (!shared) { downloadBlob(result.blob, result.filename); setMessage("Die druckfertige PDF wurde gespeichert. Bitte im PDF-Viewer öffnen und dort drucken."); }
+      } else {
+        flushSync(() => setShowPreview(true));
+        await printInvoiceDocument();
+      }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setErrors([cause instanceof Error ? cause.message : "Das Dokument konnte nicht gedruckt werden."]);
+    } finally { setBusy(false); }
+  };
   const deleteDraft = async () => { if (!form || form.status !== "draft") return; const filled = Boolean(form.customerId || form.items.some((item) => item.description.trim() && (item.unitPriceCents || item.description !== "Fotoshooting"))); if (filled && !window.confirm("Möchtest du diesen Rechnungsentwurf wirklich löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.")) return; const storedDraft = await db.invoices.get(form.id); if (storedDraft) { await db.transaction("rw", db.invoices, db.attachments, async () => { await db.invoices.delete(form.id); const temporary = await db.attachments.where("[ownerType+ownerId]").equals(["invoice", form.id]).toArray(); await db.attachments.bulkDelete(temporary.map((item) => item.id)); }); await audit("delete", "invoice-draft", form.id, storedDraft, undefined); } navigate("/invoices"); };
   const share = async () => {
     if (!form) return; const { blob, filename } = await getPdf(); const file = new File([blob], filename, { type: "application/pdf" });
@@ -123,7 +147,7 @@ export function InvoiceEditor() {
     if (!form || !company || form.status === "draft" || form.status === "cancelled" || !window.confirm(`Rechnung ${form.invoiceNumber} wirklich nachvollziehbar stornieren?`)) return;
     const number = await db.transaction("rw", db.invoices, () => nextInvoiceNumber());
     const cancellation: Invoice = { ...form, id: newId("invoice"), draftNumber: `STORNO-${Date.now()}`, invoiceNumber: number, items: form.items.map((item) => ({ ...item, id: newId("item"), unitPriceCents: -item.unitPriceCents, totalCents: -item.totalCents })), totalCents: -form.totalCents, status: "finalized", invoiceDate: new Date().toISOString().slice(0, 10), year: new Date().getFullYear(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), finalizedAt: new Date().toISOString(), cancelledInvoiceId: form.id, paidAt: undefined, paymentMethod: undefined, pdfBlob: undefined, imported: false };
-    const { blob } = await createInvoiceDocumentPdf(cancellation, selectedCustomer, company); cancellation.pdfBlob = blob;
+    const { blob } = await createInvoicePdf(cancellation, selectedCustomer, company); cancellation.pdfBlob = blob;
     await db.transaction("rw", db.invoices, async () => { await db.invoices.add(cancellation); await db.invoices.update(form.id, { status: "cancelled", correctionInvoiceId: cancellation.id, updatedAt: new Date().toISOString() }); });
     await audit("cancel", "invoice", form.id, form, { cancellationInvoiceId: cancellation.id }); navigate(`/invoices/${cancellation.id}`);
   };
