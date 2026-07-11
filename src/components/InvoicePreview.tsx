@@ -1,6 +1,7 @@
 import type { Company, Customer, Invoice } from "../types";
 import { euro } from "../lib/money";
 import { formatDate } from "../lib/date";
+import { printInvoiceDocument } from "../lib/printInvoice";
 
 const clientData = (invoice: Invoice, customer?: Customer) => invoice.customerSnapshot || (customer ? { displayName: [customer.firstName, customer.lastName].filter(Boolean).join(" ") || customer.company || "", company: customer.company, street: customer.street, postalCode: customer.postalCode, city: customer.city, country: customer.country } : undefined);
 
@@ -20,5 +21,5 @@ export function InvoiceDocument({ invoice, customer, company }: { invoice: Invoi
 }
 
 export function InvoicePreview(props: { invoice: Invoice; customer?: Customer; company: Company; onClose: () => void }) {
-  return <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Rechnungsvorschau"><div className="preview-toolbar print-hide"><button type="button" className="secondary" onClick={props.onClose}>Zurück</button><button type="button" className="primary" onClick={() => window.print()}>Drucken</button><span>Feste DIN-A4-Vorschau · Zoomen und Scrollen möglich</span></div><div className="invoice-preview-stage"><InvoiceDocument invoice={props.invoice} customer={props.customer} company={props.company} /></div></div>;
+  return <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Rechnungsvorschau"><div className="preview-toolbar print-hide"><button type="button" className="secondary" onClick={props.onClose}>Zurück</button><button type="button" className="primary" onClick={() => void printInvoiceDocument()}>Drucken</button><span>Feste DIN-A4-Vorschau · Zoomen und Scrollen möglich</span></div><div className="invoice-preview-stage"><InvoiceDocument invoice={props.invoice} customer={props.customer} company={props.company} /></div></div>;
 }

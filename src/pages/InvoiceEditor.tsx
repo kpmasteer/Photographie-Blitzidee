@@ -9,6 +9,8 @@ import { calculateInvoice } from "../lib/invoiceCalculation";
 import { InvoicePreview } from "../components/InvoicePreview";
 import { downloadBlob } from "../lib/pdf";
 import { createInvoiceDocumentPdf } from "../lib/invoiceDocumentPdf";
+import { flushSync } from "react-dom";
+import { printInvoiceDocument } from "../lib/printInvoice";
 import { makeDraft } from "../lib/seed";
 import type { Company, Invoice, InvoiceItem, InvoiceStatus, Payment } from "../types";
 
@@ -101,7 +103,7 @@ export function InvoiceEditor() {
     return createInvoiceDocumentPdf(form, selectedCustomer, company);
   };
   const download = async () => { const result = await getPdf(); downloadBlob(result.blob, result.filename); };
-  const print = () => { if (form?.status !== "draft" && !form?.invoiceNumber) return setErrors(["Eine finalisierte Rechnung benötigt vor dem Drucken eine gültige Rechnungsnummer."]); setShowPreview(true); window.setTimeout(() => window.print(), 100); };
+  const print = async () => { if (form?.status !== "draft" && !form?.invoiceNumber) return setErrors(["Eine finalisierte Rechnung benötigt vor dem Drucken eine gültige Rechnungsnummer."]); flushSync(() => setShowPreview(true)); try { await printInvoiceDocument(); } catch (cause) { setErrors([cause instanceof Error ? cause.message : String(cause)]); } };
   const deleteDraft = async () => { if (!form || form.status !== "draft") return; const filled = Boolean(form.customerId || form.items.some((item) => item.description.trim() && (item.unitPriceCents || item.description !== "Fotoshooting"))); if (filled && !window.confirm("Möchtest du diesen Rechnungsentwurf wirklich löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.")) return; const storedDraft = await db.invoices.get(form.id); if (storedDraft) { await db.transaction("rw", db.invoices, db.attachments, async () => { await db.invoices.delete(form.id); const temporary = await db.attachments.where("[ownerType+ownerId]").equals(["invoice", form.id]).toArray(); await db.attachments.bulkDelete(temporary.map((item) => item.id)); }); await audit("delete", "invoice-draft", form.id, storedDraft, undefined); } navigate("/invoices"); };
   const share = async () => {
     if (!form) return; const { blob, filename } = await getPdf(); const file = new File([blob], filename, { type: "application/pdf" });
