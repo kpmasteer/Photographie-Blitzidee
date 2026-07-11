@@ -41,7 +41,13 @@
 .invoice-preview-page th:nth-last-child(-n+2),.invoice-preview-page td:nth-last-child(-n+2) { text-align: right; }
 .invoice-preview-page footer { position: static; margin-top:auto; display: flex; flex-direction: column; border-top: 1px solid #888; padding-top: 3mm; font-size: 8pt; break-inside:avoid; }
 .invoice-filters { flex-wrap: wrap; }
-.discount-controls { display: grid; grid-template-columns: repeat(2,minmax(160px,240px)); justify-content: end; gap: .75rem; margin-top: 1rem; }
+.discount-controls { display: grid; grid-template-columns: repeat(2,minmax(180px,1fr)); gap: .75rem; margin-top: 1rem; align-items:end; }
+.position-discounts { margin-top:1.25rem; padding:1rem; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb,var(--tint) 35%,var(--paper)); }
+.position-discounts h3 { margin:0 0 .75rem; font-family:Georgia,serif; font-weight:500; }
+.position-discounts .discount-controls { grid-template-columns:80px minmax(180px,1fr) minmax(180px,1fr) minmax(150px,auto); margin:0; padding:.8rem 0; border-top:1px solid var(--line); }
+.position-discounts .discount-controls:first-of-type { border-top:0; }
+.position-discounts .discount-controls>span { align-self:center; }
+.editor-form>.discount-controls { padding:1rem; border:1px solid var(--line); border-radius:14px; background:var(--paper); }
 .draft-actions { display: flex; justify-content: flex-end; margin: -1rem 0 1rem; }
 .recurring-section { margin-top: 1rem; }
 .compact-invoice-toolbar .search { min-width: min(100%,320px); }
@@ -56,6 +62,8 @@
   .item-card > label input,.item-card > label select,.item-card > label textarea { min-width: 0; width: 100%; font-size: 16px; }
   .item-card > strong { grid-column: 2; justify-self: end; }
   .item-card .item-actions { grid-column: 2; }
+  .discount-controls,.position-discounts .discount-controls { grid-template-columns:1fr; }
+  .position-discounts .discount-controls { gap:.55rem; }
 }
 @media print { body { margin:0!important;background:white!important; } body:has(#invoice-print-root) * { visibility:hidden!important; } #invoice-print-root,#invoice-print-root * { visibility:visible!important; } #invoice-print-root { position:absolute;left:0;top:0;width:209.5mm;min-height:296mm;margin:0;padding:18mm 18mm 14mm;box-shadow:none;overflow:visible;print-color-adjust:exact;-webkit-print-color-adjust:exact; } .preview-overlay { position:static;padding:0;background:white;overflow:visible; } .preview-toolbar,.sidebar,.topbar,.bottom-nav { display:none!important; } }
 @media print {

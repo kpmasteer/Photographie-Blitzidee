@@ -36,10 +36,10 @@ export async function createInvoicePdf(invoice: Invoice, customer: Customer | un
   const drawHeader = async (continuation = false) => {
     if (!continuation) {
       try {
-        const logo = await loadImage("/Logo Photographie Blitzidee Neu.png");
+        const logo = await loadImage("/logo-rechnung.jpg");
         const properties = doc.getImageProperties(logo);
         const size = fitDimensions(properties.width, properties.height, 74, 32);
-        doc.addImage(logo, "PNG", margin, 12, size.width, size.height, undefined, "FAST");
+        doc.addImage(logo, "JPEG", margin, 12, size.width, size.height, undefined, "FAST");
       } catch { /* The textual company header remains a complete fallback. */ }
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
@@ -186,9 +186,9 @@ export async function createAnnualReportPdf(year: number, company: Company, paym
   const costs = expenses.filter((e) => !e.cancelled && e.paidAt.startsWith(String(year))).reduce((sum, e) => sum + e.deductibleCents, 0);
   const open = invoices.filter((i) => i.year === year && !["paid", "cancelled"].includes(i.status)).reduce((sum, i) => sum + i.totalCents, 0);
   try {
-    const logo = await loadImage("/Logo Photographie Blitzidee Neu.png");
+    const logo = await loadImage("/logo-rechnung.jpg");
     const properties = doc.getImageProperties(logo); const size = fitDimensions(properties.width, properties.height, 58, 24);
-    doc.addImage(logo, "PNG", 18, 12, size.width, size.height, undefined, "FAST");
+    doc.addImage(logo, "JPEG", 18, 12, size.width, size.height, undefined, "FAST");
   } catch { /* Vollständiger Textkopf bleibt erhalten. */ }
   doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(company.name, 192, 17, { align: "right" });
   doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text([company.owner, company.street, `${company.postalCode} ${company.city}`, company.email].filter(Boolean), 192, 23, { align: "right", lineHeightFactor: 1.3 });

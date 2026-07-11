@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.6 - 2026-07-11
+
+- Einzelpreiseingabe auf Desktop repariert: keine automatische Centumrechnung und keine verzögerte Textauswahl mehr während des Tippens
+- Preisnormalisierung erfolgt wieder beim Verlassen des Feldes, Speichern oder Finalisieren
+- Positions- und Gesamtrabatte als klar abgegrenzte, responsive Bereiche neu angeordnet
+- fehlerbehaftete transparente Logo-Datei mit horizontalen Pixelartefakten im PDF-Pfad ersetzt
+- Rechnungs- und Gewinn-/Verlust-PDF verwenden das saubere JPEG-Logo mit proportionaler Skalierung
+
 ## 0.4.5 - 2026-07-11
 
 - Desktopdruck von Rechnungen und Gewinn-/Verlustermittlung ebenfalls auf die textbasierte A4-PDF umgestellt
