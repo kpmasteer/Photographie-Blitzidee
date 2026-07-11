@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0 - 2026-07-11
+
+- Supabase-Projekt für die produktive Mehrgerätenutzung eingerichtet und alle versionierten Datenbankmigrationen angewendet
+- Magic-Link-Anmeldung, Organisationsanlage und Rollen `owner`, `admin`, `member` und `read_only` integriert
+- vollständige Row-Level-Security mit organisationsübergreifenden Sicherheitstests und gehärteten Tabellenbeziehungen aktiviert
+- private Storage-Buckets für Belege, Rechnungs-PDFs und Unternehmensdateien mit organisationsgebundenen Richtlinien erstellt
+- Realtime-Änderungen, versionierte Offline-Warteschlange, Wiederholungslogik und sichtbare Konfliktauflösung ergänzt
+- bestehende lokale Daten werden erst nach Analyse, vollständigem Backup und ausdrücklicher Bestätigung in die Cloud übernommen
+- atomare serverseitige Kunden- und Rechnungsnummernvergabe ohne Doppelnummern umgesetzt
+- Finalisierung, historische Rechnungsnummern und Stornierung durch geschützte PostgreSQL-Funktionen abgesichert
+- finalisierte Rechnungsinhalte auf Datenbankebene unveränderlich gemacht; PDF-Hash und operative Metadaten bleiben kontrolliert aktualisierbar
+- Cloud-Status, Synchronisationsstatus, Abmeldung, Migration und Konflikte in den Einstellungen sichtbar gemacht
+- Schreibaktionen für die Rolle `read_only` in Kunden-, Rechnungs- und Ausgabenoberflächen gesperrt
+- mobile Backup-Wiederherstellung bereinigt lokale Synchronisationszustände und verhindert ungewollte Cloud-Dubletten
+- Render-Blueprint für statisches HTTPS-Hosting, SPA-Routing, automatische Deployments und Sicherheitsheader ergänzt
+- 76 automatisierte Tests, TypeScript-Produktionbuild, PWA-Erzeugung und ESLint erfolgreich geprüft
+
+## 0.4.12 - 2026-07-11
+
+- mobilen Backup-Export über das native Speichern-/Teilen-Menü von iPad, iPhone und unterstützten Android-Geräten repariert
+- verständliche Rückmeldung bei geteiltem, heruntergeladenem oder abgebrochenem Backup ergänzt
+- offiziellen Supabase-JavaScript-Client fest versioniert eingebunden
+- optionale Magic-Link-Anmeldung und sichere Sitzungswiederherstellung vorbereitet
+- Organisations- und Rollenmodell mit `owner`, `admin`, `member` und `read_only` angelegt
+- versionierte Supabase-Migration für zentrale Tabellen, RLS, Realtime, private Storage-Buckets und Audit-Log erstellt
+- atomare serverseitige Rechnungsfinalisierung und Nummernvergabe vorbereitet
+- Repository- und Offline-Queue-Verträge sowie Datenschutz-, Migrations- und Konfliktdokumentation ergänzt
+- Cloud-Modus bleibt ohne Umgebungsvariablen deaktiviert; lokale Daten und bestehende Funktionen bleiben erhalten
+- Version 0.5.0 bewusst noch nicht freigegeben, da echte RLS-, Migrations- und Mehrgerätetests ein konfiguriertes Supabase-Entwicklungsprojekt benötigen
+
 ## 0.4.11 - 2026-07-11
 
 - vorhandener Mengenwert wird beim Anklicken oder Antippen vollständig markiert

@@ -10,6 +10,9 @@ import { InvoicePreview } from "../components/InvoicePreview";
 import { createInvoicePdf, downloadBlob, openPdfInWindow, prefersNativePdfShare, sharePdfFile } from "../lib/pdf";
 import { makeDraft } from "../lib/seed";
 import type { Company, Invoice, InvoiceItem, InvoiceStatus, Payment } from "../types";
+import { useCloud } from "../cloud/context";
+import { cancelCloudInvoice, finalizeCloudInvoice, sealCloudInvoice } from "../cloud/invoiceActions";
+import { withRemoteWriteSuppressed } from "../cloud/sync/localChanges";
 
 const statusLabels: Record<InvoiceStatus, string> = { draft: "Entwurf", finalized: "Finalisiert", sent: "Versendet", partially_paid: "Teilbezahlt", paid: "Bezahlt", overdue: "Überfällig", cancelled: "Storniert" };
 
@@ -28,6 +31,8 @@ const snapshotCompany = (company: Company) => {
 
 export function InvoiceEditor() {
   const { invoiceId } = useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams();
+  const cloud = useCloud();
+  const canWrite = !cloud.configured || cloud.membership?.role !== "read_only";
   const company = useLiveQuery(() => db.company.get("company"), [], undefined);
   const customers = useLiveQuery(() => db.customers.filter((customer) => !customer.archived).sortBy("lastName"), [], []);
   const stored = useLiveQuery<Invoice | undefined, undefined>(async () => invoiceId ? await db.invoices.get(invoiceId) : undefined, [invoiceId], undefined);
@@ -45,7 +50,8 @@ export function InvoiceEditor() {
     return () => document.removeEventListener("focusin", selectQuantity);
   }, []);
   useEffect(() => { if (stored) setForm(stored); else if (!invoiceId && company && !form) setForm(makeDraft(company, searchParams.get("customer") || "")); }, [stored, invoiceId, company, form, searchParams]);
-  const editable = form?.status === "draft";
+  const isDraft = form?.status === "draft";
+  const editable = isDraft && canWrite;
   const selectedCustomer = customers.find((customer) => customer.id === form?.customerId);
   const paidCents = payments.reduce((sum, payment) => sum + payment.amountCents, 0);
   const restCents = form ? openAmount(form.totalCents, payments) : 0;
@@ -93,31 +99,64 @@ export function InvoiceEditor() {
   };
   const normalizePrices = () => (form?.items || []).every((item) => commitPrice(item));
   const save = async () => {
-    if (!form) return; setBusy(true);
+    if (!form || !canWrite) return; setBusy(true);
     try { if (!normalizePrices()) { setErrors(["Bitte korrigieren Sie ungültige Einzelpreise."]); return; } const before = await db.invoices.get(form.id); await db.invoices.put(form); await audit(before ? "update" : "create", "invoice", form.id, before, form); setMessage("Entwurf gespeichert."); if (!invoiceId) navigate(`/invoices/${form.id}`, { replace: true }); }
     finally { setBusy(false); }
   };
   const nextInvoiceNumber = async () => {
-    const all = await db.invoices.toArray(); const max = all.map((invoice) => invoice.invoiceNumber).filter((value): value is string => Boolean(value && /^\d{5}$/.test(value))).map(Number).reduce((a, b) => Math.max(a, b), 0);
+    const all = await db.invoices.where("year").equals(form?.year ?? new Date().getFullYear()).toArray(); const max = all.map((invoice) => invoice.invoiceNumber).filter((value): value is string => Boolean(value && /^\d{5}$/.test(value))).map(Number).reduce((a, b) => Math.max(a, b), 0);
     return String(max + 1).padStart(5, "0");
   };
   const finalize = async () => {
-    if (!form || !company || !normalizePrices() || validate().length) return; setBusy(true);
+    if (!form || !company || !canWrite || !normalizePrices() || validate().length) return; setBusy(true);
     try {
       const customer = selectedCustomer!;
       const customerSnapshot = { customerNumber: customer.customerNumber, displayName: [customer.firstName, customer.lastName].filter(Boolean).join(" ") || customer.company || "", company: customer.company, street: customer.street, postalCode: customer.postalCode, city: customer.city, country: customer.country, email: customer.email };
       let finalized!: Invoice;
-      await db.transaction("rw", db.invoices, db.auditLogs, async () => {
-        const current = await db.invoices.get(form.id); if (current && current.status !== "draft") throw new Error("Diese Rechnung wurde bereits finalisiert.");
-        const number = await nextInvoiceNumber();
-        finalized = { ...form, invoiceNumber: number, customerSnapshot, companySnapshot: snapshotCompany(company), status: "finalized", finalizedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        await db.invoices.put(finalized); await audit("finalize", "invoice", finalized.id, current, finalized);
-      });
+      const preparedDraft: Invoice = {
+        ...form,
+        customerSnapshot,
+        companySnapshot: snapshotCompany(company),
+        updatedAt: new Date().toISOString()
+      };
+      if (cloud.configured) {
+        if (!cloud.runtime.online) throw new Error("Zum Finalisieren und zur sicheren Vergabe der Rechnungsnummer ist eine Internetverbindung erforderlich. Der Entwurf bleibt erhalten.");
+        const organizationId = cloud.membership?.organization_id;
+        if (!organizationId) throw new Error("Es ist kein gemeinsamer Datenbereich zugeordnet.");
+        const current = await db.invoices.get(form.id);
+        if (current && current.status !== "draft") throw new Error("Diese Rechnung wurde bereits finalisiert.");
+        await db.invoices.put(preparedDraft);
+        const syncResult = await cloud.syncNow();
+        if (syncResult.status !== "completed") throw new Error(syncResult.message);
+        const remote = await finalizeCloudInvoice(organizationId, preparedDraft.id);
+        if (!remote.invoiceNumber) throw new Error("Der Server hat keine endgültige Rechnungsnummer zurückgegeben.");
+        finalized = {
+          ...preparedDraft,
+          invoiceNumber: remote.invoiceNumber,
+          status: remote.status as InvoiceStatus,
+          finalizedAt: remote.finalizedAt || new Date().toISOString(),
+          updatedAt: remote.updatedAt || new Date().toISOString()
+        };
+        await withRemoteWriteSuppressed(() => db.invoices.put(finalized));
+        await audit("finalize-cloud", "invoice", finalized.id, current, finalized);
+      } else {
+        await db.transaction("rw", db.invoices, db.auditLogs, async () => {
+          const current = await db.invoices.get(form.id); if (current && current.status !== "draft") throw new Error("Diese Rechnung wurde bereits finalisiert.");
+          const number = await nextInvoiceNumber();
+          finalized = { ...preparedDraft, invoiceNumber: number, status: "finalized", finalizedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          await db.invoices.put(finalized); await audit("finalize", "invoice", finalized.id, current, finalized);
+        });
+      }
       const hashInput = JSON.stringify({ ...finalized, pdfBlob: undefined });
       const contentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hashInput)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
       const { blob } = await createInvoicePdf(finalized, customer, company);
       finalized = { ...finalized, contentHash, pdfBlob: blob };
-      await db.invoices.update(finalized.id, { contentHash, pdfBlob: blob });
+      if (cloud.configured && cloud.membership?.organization_id) {
+        await sealCloudInvoice(cloud.membership.organization_id, finalized.id, contentHash);
+        await withRemoteWriteSuppressed(() => db.invoices.update(finalized.id, { contentHash, pdfBlob: blob }));
+      } else {
+        await db.invoices.update(finalized.id, { contentHash, pdfBlob: blob });
+      }
       setForm(finalized); setMessage(`Rechnung ${finalized.invoiceNumber} wurde finalisiert und ist nun unveränderlich.`);
     } catch (cause) { setErrors([cause instanceof Error ? cause.message : String(cause)]); } finally { setBusy(false); }
   };
@@ -157,7 +196,7 @@ export function InvoiceEditor() {
       setErrors([cause instanceof Error ? cause.message : "Das Dokument konnte nicht gedruckt werden."]);
     } finally { setBusy(false); }
   };
-  const deleteDraft = async () => { if (!form || form.status !== "draft") return; const filled = Boolean(form.customerId || form.items.some((item) => item.description.trim() && (item.unitPriceCents || item.description !== "Fotoshooting"))); if (filled && !window.confirm("Möchtest du diesen Rechnungsentwurf wirklich löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.")) return; const storedDraft = await db.invoices.get(form.id); if (storedDraft) { await db.transaction("rw", db.invoices, db.attachments, async () => { await db.invoices.delete(form.id); const temporary = await db.attachments.where("[ownerType+ownerId]").equals(["invoice", form.id]).toArray(); await db.attachments.bulkDelete(temporary.map((item) => item.id)); }); await audit("delete", "invoice-draft", form.id, storedDraft, undefined); } navigate("/invoices"); };
+  const deleteDraft = async () => { if (!form || !canWrite || form.status !== "draft") return; const filled = Boolean(form.customerId || form.items.some((item) => item.description.trim() && (item.unitPriceCents || item.description !== "Fotoshooting"))); if (filled && !window.confirm("Möchtest du diesen Rechnungsentwurf wirklich löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.")) return; const storedDraft = await db.invoices.get(form.id); if (storedDraft) { await db.transaction("rw", db.invoices, db.attachments, async () => { await db.invoices.delete(form.id); const temporary = await db.attachments.where("[ownerType+ownerId]").equals(["invoice", form.id]).toArray(); await db.attachments.bulkDelete(temporary.map((item) => item.id)); }); await audit("delete", "invoice-draft", form.id, storedDraft, undefined); } navigate("/invoices"); };
   const share = async () => {
     if (!form) return; const { blob, filename } = await getPdf(); const file = new File([blob], filename, { type: "application/pdf" });
     const customerName = form.customerSnapshot?.displayName || [selectedCustomer?.firstName, selectedCustomer?.lastName].filter(Boolean).join(" ");
@@ -166,7 +205,7 @@ export function InvoiceEditor() {
     else { downloadBlob(blob, filename); window.location.href = `mailto:${encodeURIComponent(selectedCustomer?.email || "")}?subject=${encodeURIComponent(`Rechnung ${form.invoiceNumber}`)}&body=${encodeURIComponent(`${text}\n\nHinweis: Bitte fügen Sie die gespeicherte PDF-Datei manuell als Anhang hinzu.`)}`; setMessage("Das Gerät unterstützt keine Dateifreigabe. Die PDF wurde gespeichert; im E-Mail-Entwurf muss sie manuell angehängt werden."); }
   };
   const recordPayment = async () => {
-    if (!form || restCents <= 0) return; const raw = window.prompt(`Zahlungsbetrag (offen: ${euro(restCents)})`, (restCents / 100).toFixed(2).replace(".", ",")); if (!raw) return;
+    if (!form || !canWrite || restCents <= 0) return; const raw = window.prompt(`Zahlungsbetrag (offen: ${euro(restCents)})`, (restCents / 100).toFixed(2).replace(".", ",")); if (!raw) return;
     const amountCents = parseEuroToCents(raw); if (amountCents <= 0 || amountCents > restCents) return setErrors(["Der Zahlungsbetrag muss positiv sein und darf den offenen Betrag nicht überschreiten."]);
     const paidAt = window.prompt("Zahlungsdatum (JJJJ-MM-TT)", new Date().toISOString().slice(0, 10)) || ""; if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) return setErrors(["Ungültiges Zahlungsdatum."]);
     const method = window.prompt("Zahlungsart", "Überweisung")?.trim(); if (!method) return;
@@ -174,7 +213,83 @@ export function InvoiceEditor() {
     const nextStatus: InvoiceStatus = amountCents === restCents ? "paid" : "partially_paid"; await db.invoices.update(form.id, { status: nextStatus, paidAt: nextStatus === "paid" ? paidAt : undefined, updatedAt: new Date().toISOString() }); await audit("payment", "invoice", form.id, undefined, { amountCents, paidAt, method }); setMessage(nextStatus === "paid" ? "Zahlung wurde vollständig erfasst." : "Teilzahlung wurde erfasst.");
   };
   const cancel = async () => {
-    if (!form || !company || form.status === "draft" || form.status === "cancelled" || !window.confirm(`Rechnung ${form.invoiceNumber} wirklich nachvollziehbar stornieren?`)) return;
+    if (!form || !company || !canWrite || form.status === "draft" || form.status === "cancelled" || !window.confirm(`Rechnung ${form.invoiceNumber} wirklich nachvollziehbar stornieren?`)) return;
+    if (cloud.configured) {
+      if (!cloud.runtime.online) return setErrors(["Für eine rechtssichere Stornorechnung und eindeutige Nummer wird eine Internetverbindung benötigt."]);
+      const organizationId = cloud.membership?.organization_id;
+      if (!organizationId) return setErrors(["Es ist kein gemeinsamer Datenbereich zugeordnet."]);
+      setBusy(true); setErrors([]);
+      try {
+        const now = new Date().toISOString();
+        const cancellation: Invoice = {
+          ...form,
+          id: newId("invoice"),
+          draftNumber: `STORNO-${Date.now()}`,
+          invoiceNumber: undefined,
+          items: form.items.map((item, sortOrder) => ({
+            ...item,
+            id: newId("item"),
+            description: `Storno: ${item.description}`,
+            quantityMilli: 1000,
+            unitPriceCents: -item.totalCents,
+            subtotalCents: -item.totalCents,
+            discountType: undefined,
+            discountValue: undefined,
+            discountCents: 0,
+            totalCents: -item.totalCents,
+            sortOrder
+          })),
+          subtotalCents: -form.totalCents,
+          discountType: undefined,
+          discountValue: undefined,
+          discountCents: 0,
+          totalCents: -form.totalCents,
+          status: "draft",
+          invoiceDate: now.slice(0, 10),
+          dueDate: now.slice(0, 10),
+          paymentTermDays: 0,
+          year: Number(now.slice(0, 4)),
+          createdAt: now,
+          updatedAt: now,
+          finalizedAt: undefined,
+          cancelledInvoiceId: form.id,
+          correctionInvoiceId: undefined,
+          paidAt: undefined,
+          paymentMethod: undefined,
+          contentHash: undefined,
+          pdfBlob: undefined,
+          imported: false
+        };
+        await db.invoices.add(cancellation);
+        const syncResult = await cloud.syncNow();
+        if (syncResult.status !== "completed") throw new Error(syncResult.message);
+        const remote = await cancelCloudInvoice(organizationId, form.id, cancellation.id);
+        if (!remote.correction.invoiceNumber) throw new Error("Der Server hat keine Nummer für die Stornorechnung zurückgegeben.");
+        const finalizedCancellation: Invoice = {
+          ...cancellation,
+          invoiceNumber: remote.correction.invoiceNumber,
+          status: remote.correction.status as InvoiceStatus,
+          finalizedAt: remote.correction.finalizedAt || now,
+          updatedAt: remote.correction.updatedAt || now
+        };
+        await withRemoteWriteSuppressed(async () => {
+          await db.invoices.put(finalizedCancellation);
+          await db.invoices.update(form.id, { status: "cancelled", correctionInvoiceId: cancellation.id, updatedAt: remote.original.updatedAt || now });
+        });
+        const hashInput = JSON.stringify({ ...finalizedCancellation, pdfBlob: undefined });
+        const contentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hashInput)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+        const { blob } = await createInvoicePdf(finalizedCancellation, selectedCustomer, company);
+        await sealCloudInvoice(organizationId, finalizedCancellation.id, contentHash);
+        await withRemoteWriteSuppressed(() => db.invoices.update(finalizedCancellation.id, { contentHash, pdfBlob: blob }));
+        await audit("cancel-cloud", "invoice", form.id, form, { cancellationInvoiceId: cancellation.id });
+        navigate(`/invoices/${cancellation.id}`);
+      } catch (cause) {
+        setErrors([cause instanceof Error ? cause.message : "Die Rechnung konnte nicht storniert werden."]);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const number = await db.transaction("rw", db.invoices, () => nextInvoiceNumber());
     const cancellation: Invoice = { ...form, id: newId("invoice"), draftNumber: `STORNO-${Date.now()}`, invoiceNumber: number, items: form.items.map((item) => ({ ...item, id: newId("item"), unitPriceCents: -item.unitPriceCents, totalCents: -item.totalCents })), totalCents: -form.totalCents, status: "finalized", invoiceDate: new Date().toISOString().slice(0, 10), year: new Date().getFullYear(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), finalizedAt: new Date().toISOString(), cancelledInvoiceId: form.id, paidAt: undefined, paymentMethod: undefined, pdfBlob: undefined, imported: false };
     const { blob } = await createInvoicePdf(cancellation, selectedCustomer, company); cancellation.pdfBlob = blob;
@@ -183,11 +298,11 @@ export function InvoiceEditor() {
   };
   if (!form || !company) return <p>Rechnung wird geladen …</p>;
   return <>
-    <header className="page-header compact"><div><Link className="back" to="/invoices"><ArrowLeft /> Rechnungen</Link><h1>{form.invoiceNumber ? `Rechnung ${form.invoiceNumber}` : "Neue Rechnung"}</h1><p><span className={`status ${form.status}`}>{statusLabels[form.status]}</span>{form.imported && " · Historischer Excel-Import"}</p></div><div className="actions"><button type="button" className="secondary" onClick={() => setShowPreview(true)}><Eye /> Vorschau</button>{editable ? <><button type="button" className="secondary" onClick={save} disabled={busy}><Save /> Entwurf speichern</button><button type="button" className="primary" onClick={finalize} disabled={busy}><FileCheck2 /> Finalisieren</button></> : <><button type="button" className="secondary" onClick={download}><Download /> PDF</button><button type="button" className="secondary" onClick={print}><Printer /> Drucken</button><button type="button" className="primary" onClick={share}><Share2 /> Teilen</button></>}</div></header>
+    <header className="page-header compact"><div><Link className="back" to="/invoices"><ArrowLeft /> Rechnungen</Link><h1>{form.invoiceNumber ? `Rechnung ${form.invoiceNumber}` : "Neue Rechnung"}</h1><p><span className={`status ${form.status}`}>{statusLabels[form.status]}</span>{form.imported && " · Historischer Import"}{!canWrite && " · Nur-Lesen-Zugriff"}</p></div><div className="actions"><button type="button" className="secondary" onClick={() => setShowPreview(true)}><Eye /> Vorschau</button>{isDraft ? (canWrite ? <><button type="button" className="secondary" onClick={save} disabled={busy}><Save /> Entwurf speichern</button><button type="button" className="primary" onClick={finalize} disabled={busy}><FileCheck2 /> Finalisieren</button></> : null) : <><button type="button" className="secondary" onClick={download}><Download /> PDF</button><button type="button" className="secondary" onClick={print}><Printer /> Drucken</button><button type="button" className="primary" onClick={share}><Share2 /> Teilen</button></>}</div></header>
     {editable && <div className="draft-actions"><button type="button" className="danger" onClick={deleteDraft}><Trash2 /> Entwurf löschen</button></div>}
     {(message || errors.length > 0) && <div className={errors.length ? "notice error" : "notice success"} role="status">{errors.length ? <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul> : message}</div>}
-    {!editable && <div className="locked"><FileCheck2 /><span><strong>Finalisierter Beleg</strong> Inhalt und Kundensnapshot sind gegen stilles Überschreiben geschützt. Korrekturen erfolgen per Storno.</span></div>}
-    <div className={`editor-grid ${editable ? "draft-editor" : "finalized-editor"}`}><section className="panel editor-form"><h2>Rechnungsdaten</h2><div className="form-grid">
+    {!isDraft && <div className="locked"><FileCheck2 /><span><strong>Finalisierter Beleg</strong> Inhalt und Kundensnapshot sind gegen stilles Überschreiben geschützt. Korrekturen erfolgen per Storno.</span></div>}
+    <div className={`editor-grid ${isDraft ? "draft-editor" : "finalized-editor"}`}><section className="panel editor-form"><h2>Rechnungsdaten</h2><div className="form-grid">
       <label className="wide">Kunde*<select value={form.customerId} disabled={!editable} onChange={(e) => update("customerId", e.target.value)}><option value="">Kunde auswählen</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{[customer.firstName, customer.lastName].filter(Boolean).join(" ") || customer.company} · {customer.city}</option>)}</select></label>
       <label>Rechnungsdatum*<input type="date" value={form.invoiceDate} disabled={!editable} onChange={(e) => { update("invoiceDate", e.target.value); update("year", Number(e.target.value.slice(0, 4))); update("dueDate", addDays(e.target.value, form.paymentTermDays)); }} /></label>
       <label>Leistungsdatum*<input type="date" value={form.serviceDateFrom} disabled={!editable} onChange={(e) => update("serviceDateFrom", e.target.value)} /></label>
@@ -198,7 +313,7 @@ export function InvoiceEditor() {
       {editable && <div className="discount-controls"><label>Gesamtrabatt<select value={form.discountType || ""} onChange={(e) => { const type = (e.target.value || undefined) as Invoice["discountType"]; setDiscountInputs((current) => ({ ...current, invoice: "" })); recalc(form.items, { type, value: 0 }); }}><option value="">Kein Rabatt</option><option value="percent">Prozent</option><option value="fixed">Fester Betrag</option></select></label>{form.discountType && <label>{form.discountType === "percent" ? "Rabatt in %" : "Rabattbetrag"}<input inputMode="decimal" value={discountValueText("invoice", form.discountType, form.discountValue)} onFocus={(e) => e.currentTarget.select()} onChange={(e) => changeInvoiceDiscount(e.target.value)} /></label>}</div>}
       <div className="invoice-total">{Boolean(form.discountCents) && <span>Zwischensumme {euro(form.subtotalCents ?? form.totalCents)} · Rabatt −{euro(form.discountCents || 0)}</span>}<span>Gesamtbetrag</span><strong>{euro(form.totalCents)}</strong></div>
       <label>Einleitung<textarea value={form.introText} disabled={!editable} onChange={(e) => update("introText", e.target.value)} /></label><label>Schlusstext<textarea value={form.outroText} disabled={!editable} onChange={(e) => update("outroText", e.target.value)} /></label><label>Kleinunternehmerhinweis*<textarea value={form.taxExemptionNote} disabled={!editable} onChange={(e) => update("taxExemptionNote", e.target.value)} /></label>
-    </section><aside className="editor-aside"><article className="panel"><h2>Zahlungsstand</h2><p className="section-note">Hier können vollständige Zahlungen und beliebige Teilzahlungen verbucht werden.</p><dl className="summary"><div><dt>Rechnungsbetrag</dt><dd>{euro(form.totalCents)}</dd></div><div><dt>Erhalten</dt><dd>{euro(paidCents)}</dd></div><div className="total"><dt>Offen</dt><dd>{euro(restCents)}</dd></div></dl>{!editable && form.status !== "cancelled" && restCents > 0 && <button className="secondary full" onClick={recordPayment}><WalletCards /> Teilzahlung / Zahlung erfassen</button>}<div className="payment-list">{payments.map((payment) => <small key={payment.id}>{formatDate(payment.paidAt)} · {euro(payment.amountCents)} · {payment.method}</small>)}</div></article>{!editable && form.status !== "cancelled" && <article className="panel danger-zone"><h2>Korrektur</h2><p>Eine finalisierte Rechnung wird nicht bearbeitet oder gelöscht.</p><button className="danger" onClick={cancel}><XCircle /> Stornorechnung erstellen</button></article>}</aside></div>
+    </section><aside className="editor-aside"><article className="panel"><h2>Zahlungsstand</h2><p className="section-note">Hier können vollständige Zahlungen und beliebige Teilzahlungen verbucht werden.</p><dl className="summary"><div><dt>Rechnungsbetrag</dt><dd>{euro(form.totalCents)}</dd></div><div><dt>Erhalten</dt><dd>{euro(paidCents)}</dd></div><div className="total"><dt>Offen</dt><dd>{euro(restCents)}</dd></div></dl>{!isDraft && canWrite && form.status !== "cancelled" && restCents > 0 && <button className="secondary full" onClick={recordPayment}><WalletCards /> Teilzahlung / Zahlung erfassen</button>}<div className="payment-list">{payments.map((payment) => <small key={payment.id}>{formatDate(payment.paidAt)} · {euro(payment.amountCents)} · {payment.method}</small>)}</div></article>{!isDraft && canWrite && form.status !== "cancelled" && <article className="panel danger-zone"><h2>Korrektur</h2><p>Eine finalisierte Rechnung wird nicht bearbeitet oder gelöscht.</p><button className="danger" onClick={cancel}><XCircle /> Stornorechnung erstellen</button></article>}</aside></div>
     {showPreview && <InvoicePreview invoice={form} customer={selectedCustomer} company={company} onClose={() => setShowPreview(false)} />}
   </>;
 }

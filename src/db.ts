@@ -1,8 +1,9 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { AppSetting, Attachment, AuditLog, Company, Customer, Expense, ImportLog, Invoice, Payment, RecurringExpense, ServiceTemplate } from "./types";
+import type { SyncConflict, SyncMetadata, SyncQueueEntry } from "./cloud/sync/types";
 
-export const APP_VERSION = "0.4.11";
-export const DB_SCHEMA_VERSION = 4;
+export const APP_VERSION = "0.5.0";
+export const DB_SCHEMA_VERSION = 6;
 
 class BlitzideeDatabase extends Dexie {
   company!: EntityTable<Company, "id">;
@@ -16,6 +17,9 @@ class BlitzideeDatabase extends Dexie {
   settings!: EntityTable<AppSetting, "key">;
   serviceTemplates!: EntityTable<ServiceTemplate, "id">;
   recurringExpenses!: EntityTable<RecurringExpense, "id">;
+  syncQueue!: EntityTable<SyncQueueEntry, "id">;
+  syncMetadata!: EntityTable<SyncMetadata, "id">;
+  syncConflicts!: EntityTable<SyncConflict, "id">;
 
   constructor() {
     super("photographie-blitzidee-rechnungen");
@@ -65,6 +69,38 @@ class BlitzideeDatabase extends Dexie {
       settings: "key",
       serviceTemplates: "id, sortOrder, archived, sourceFingerprint, updatedAt",
       recurringExpenses: "id, status, nextDueDate, supplier, category, updatedAt"
+    });
+    this.version(5).stores({
+      company: "id",
+      customers: "id, customerNumber, lastName, company, archived, importFingerprint, updatedAt",
+      invoices: "id, &invoiceNumber, year, customerId, status, invoiceDate, importFingerprint, updatedAt",
+      payments: "id, invoiceId, paidAt",
+      expenses: "id, paidAt, category, supplier, cancelled, updatedAt, importFingerprint, costType, recurringExpenseId, &periodKey",
+      attachments: "id, [ownerType+ownerId], ownerId",
+      auditLogs: "id, timestamp, recordType, recordId",
+      importLogs: "id, &sourceFingerprint, createdAt",
+      settings: "key",
+      serviceTemplates: "id, sortOrder, archived, sourceFingerprint, updatedAt",
+      recurringExpenses: "id, status, nextDueDate, supplier, category, updatedAt",
+      syncQueue: "id, &dedupeKey, organizationId, entityType, entityId, status, nextAttemptAt, createdAt",
+      syncMetadata: "id, organizationId, entityType, entityId, remoteId, lastSyncedAt, [organizationId+entityType]",
+      syncConflicts: "id, &conflictKey, organizationId, entityType, entityId, status, createdAt, [organizationId+status]"
+    });
+    this.version(6).stores({
+      company: "id",
+      customers: "id, customerNumber, lastName, company, archived, importFingerprint, updatedAt",
+      invoices: "id, &[year+invoiceNumber], year, customerId, status, invoiceDate, importFingerprint, updatedAt",
+      payments: "id, invoiceId, paidAt",
+      expenses: "id, paidAt, category, supplier, cancelled, updatedAt, importFingerprint, costType, recurringExpenseId, &periodKey",
+      attachments: "id, [ownerType+ownerId], ownerId",
+      auditLogs: "id, timestamp, recordType, recordId",
+      importLogs: "id, &sourceFingerprint, createdAt",
+      settings: "key",
+      serviceTemplates: "id, sortOrder, archived, sourceFingerprint, updatedAt",
+      recurringExpenses: "id, status, nextDueDate, supplier, category, updatedAt",
+      syncQueue: "id, &dedupeKey, organizationId, entityType, entityId, status, nextAttemptAt, createdAt",
+      syncMetadata: "id, organizationId, entityType, entityId, remoteId, lastSyncedAt, [organizationId+entityType]",
+      syncConflicts: "id, &conflictKey, organizationId, entityType, entityId, status, createdAt, [organizationId+status]"
     });
   }
 }

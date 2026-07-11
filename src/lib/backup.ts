@@ -55,7 +55,9 @@ export async function createBackupBlob(password?: string) {
     data: {
       company: await db.company.toArray(), customers: await db.customers.toArray(), invoices: await db.invoices.toArray(),
       payments: await db.payments.toArray(), expenses: await db.expenses.toArray(), attachments: await db.attachments.toArray(),
-      auditLogs: await db.auditLogs.toArray(), importLogs: await db.importLogs.toArray(), settings: await db.settings.toArray(), serviceTemplates: await db.serviceTemplates.toArray(), recurringExpenses: await db.recurringExpenses.toArray()
+      auditLogs: await db.auditLogs.toArray(), importLogs: await db.importLogs.toArray(),
+      settings: (await db.settings.toArray()).filter((setting) => !setting.key.startsWith("cloudMigration:")),
+      serviceTemplates: await db.serviceTemplates.toArray(), recurringExpenses: await db.recurringExpenses.toArray()
     }
   };
   const withBlobs = await encodeBlobs(raw) as BackupPayload;
@@ -83,8 +85,21 @@ export async function createBackupBlob(password?: string) {
 
 export async function exportBackup(password?: string) {
   const { blob, filename } = await createBackupBlob(password);
-  downloadBlob(blob, filename);
+  // Safari/iPadOS teilt JSON-Dateien je nach Version nicht als application/json,
+  // akzeptiert dieselbe unveränderte .json-Datei aber zuverlässig als Textdatei.
+  const file = new File([blob], filename, { type: "text/plain" });
+  let delivery: "shared" | "downloaded" = "downloaded";
+  if (navigator.canShare?.({ files: [file] }) && navigator.share) {
+    try {
+      await navigator.share({ title: "Photographie Blitzidee – vollständiges Backup", text: "Sicherungsdatei der Rechnungsapp", files: [file] });
+      delivery = "shared";
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return { delivery: "cancelled" as const, filename };
+      downloadBlob(blob, filename);
+    }
+  } else downloadBlob(blob, filename);
   await db.settings.put({ key: "lastBackupAt", value: new Date().toISOString() });
+  return { delivery, filename };
 }
 
 async function decryptIfNeeded(parsed: Record<string, unknown>, password?: string) {
@@ -107,11 +122,13 @@ export async function restoreBackup(file: File, password?: string) {
   if (!checksum || await sha256(JSON.stringify(parsed, serialize)) !== checksum) throw new Error("Integritätsprüfung fehlgeschlagen. Das Backup ist möglicherweise beschädigt.");
   const payload = decodeBlobs(parsed) as BackupPayload;
   if (!payload.data || !Array.isArray(payload.data.customers) || !Array.isArray(payload.data.invoices)) throw new Error("Das Backup enthält keine gültige Datenstruktur.");
-  await db.transaction("rw", [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings, db.serviceTemplates, db.recurringExpenses], async () => {
-    await Promise.all([db.company.clear(), db.customers.clear(), db.invoices.clear(), db.payments.clear(), db.expenses.clear(), db.attachments.clear(), db.auditLogs.clear(), db.importLogs.clear(), db.settings.clear(), db.serviceTemplates.clear(), db.recurringExpenses.clear()]);
+  await db.transaction("rw", [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings, db.serviceTemplates, db.recurringExpenses, db.syncQueue, db.syncMetadata, db.syncConflicts], async () => {
+    await Promise.all([db.company.clear(), db.customers.clear(), db.invoices.clear(), db.payments.clear(), db.expenses.clear(), db.attachments.clear(), db.auditLogs.clear(), db.importLogs.clear(), db.settings.clear(), db.serviceTemplates.clear(), db.recurringExpenses.clear(), db.syncQueue.clear(), db.syncMetadata.clear(), db.syncConflicts.clear()]);
     await db.company.bulkPut(payload.data.company); await db.customers.bulkPut(payload.data.customers); await db.invoices.bulkPut(payload.data.invoices);
     await db.payments.bulkPut(payload.data.payments); await db.expenses.bulkPut(payload.data.expenses); await db.attachments.bulkPut(payload.data.attachments);
-    await db.auditLogs.bulkPut(payload.data.auditLogs); await db.importLogs.bulkPut(payload.data.importLogs); await db.settings.bulkPut(payload.data.settings); await db.serviceTemplates.bulkPut(payload.data.serviceTemplates || []); await db.recurringExpenses.bulkPut(payload.data.recurringExpenses || []);
+    await db.auditLogs.bulkPut(payload.data.auditLogs); await db.importLogs.bulkPut(payload.data.importLogs);
+    await db.settings.bulkPut(payload.data.settings.filter((setting) => !setting.key.startsWith("cloudMigration:")));
+    await db.serviceTemplates.bulkPut(payload.data.serviceTemplates || []); await db.recurringExpenses.bulkPut(payload.data.recurringExpenses || []);
   });
   return { customers: payload.data.customers.length, invoices: payload.data.invoices.length, expenses: payload.data.expenses.length };
 }

@@ -1,0 +1,3 @@
+-- Absichtlich leer.
+-- Automatisierte Tests erzeugen ausschließlich frei erfundene Daten in isolierten
+-- Testtransaktionen. Produktive Kunden- oder Rechnungsdaten gehören nie in Seeds.

@@ -1,6 +1,7 @@
 import { db, newId } from "../db";
 import type { Company, Customer, Invoice, InvoiceItem } from "../types";
 import { addDays } from "./date";
+import { cloudConfigured } from "../cloud/config";
 
 const now = "2026-07-10T20:20:09.000Z";
 
@@ -43,6 +44,20 @@ const historical = [
 export async function seedDatabase() {
   const seeded = await db.settings.get("historicalSeedV1");
   if (seeded?.value) return;
+
+  // Auf einem neuen Cloud-Gerät dürfen die historischen Demo-/Probezeilen nicht
+  // erneut entstehen. Der gemeinsame Datenbestand wird anschließend vom Sync-
+  // Dienst geladen. Bereits vorhandene lokale Installationen besitzen das Flag
+  // schon und behalten ihre Daten unverändert.
+  if (cloudConfigured) {
+    await db.transaction("rw", [db.company, db.settings], async () => {
+      if (!(await db.company.get("company"))) await db.company.add(defaultCompany);
+      await db.settings.put({ key: "historicalSeedV1", value: "cloud-device-skipped" });
+      if (!(await db.settings.get("lastBackupAt"))) await db.settings.put({ key: "lastBackupAt", value: null });
+      if (!(await db.settings.get("installedAt"))) await db.settings.put({ key: "installedAt", value: new Date().toISOString() });
+    });
+    return;
+  }
 
   await db.transaction("rw", [db.company, db.customers, db.invoices, db.payments, db.importLogs, db.settings], async () => {
     if (!(await db.company.get("company"))) await db.company.add(defaultCompany);

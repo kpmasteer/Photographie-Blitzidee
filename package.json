@@ -1,7 +1,7 @@
 {
   "name": "photographie-blitzidee-rechnungsapp",
   "private": true,
-  "version": "0.4.11",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@supabase/supabase-js": "^2.57.4",
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^1.1.7",
     "jspdf": "^4.2.1",

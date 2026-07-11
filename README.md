@@ -1,6 +1,12 @@
 # Photographie Blitzidee Rechnungs-PWA
 
-Version 0.4.11 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Mengen-, Preis- und Rabattbeträge markieren ihren vorhandenen Wert beim Fokus und können dadurch unmittelbar überschrieben werden. Kundendaten bleiben im jeweiligen Browserprofil und werden nicht ungefragt übertragen.
+Version 0.5.0 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Mit konfiguriertem Supabase-Projekt synchronisiert sie verschlüsselt über HTTPS zwischen Geräten; IndexedDB bleibt Offline-Cache. Mobile Backups verwenden das native Speichern-/Teilen-Menü. Vorhandene lokale Kundendaten werden niemals ungefragt übertragen.
+
+## Cloud- und lokale Betriebsart
+
+Für den Cloud-Modus `.env.example` nach `.env.local` kopieren und ausschließlich `VITE_SUPABASE_URL` sowie den öffentlichen Publishable-/Anon-Key setzen. Niemals einen Secret- oder Service-Role-Key verwenden. Ohne diese Variablen bleibt die App vollständig lokal nutzbar. Einrichtung, Migration, Datenschutz und Konfliktverhalten stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
+
+Nach der Anmeldung per Magic Link wird eine Organisation gewählt oder einmalig erstellt. Ein frisches Gerät lädt den vorhandenen Cloud-Bestand. Erkennt die App bereits lokale Geschäftsdaten, sperrt sie die automatische Übertragung: Erst die Analyse im Bereich `Einstellungen → Cloud & Synchronisation`, ein erzeugtes Backup und die Bestätigung `DATEN ÜBERNEHMEN` starten die wiederaufnehmbare Migration.
 
 ## Installation und Start
 
@@ -29,9 +35,9 @@ Vor der ersten neuen Finalisierung verlangt die App die sichtbare Kontrolle von 
 
 ## Datenhaltung und Unveränderbarkeit
 
-Dexie verwaltet das versionierte IndexedDB-Schema für Unternehmen, Kunden, Rechnungen, Zahlungen, Ausgaben, Belege, Audit- und Importprotokolle sowie Einstellungen. LocalStorage wird ausschließlich für das Farbschema verwendet.
+Dexie verwaltet das versionierte IndexedDB-Schema für Unternehmen, Kunden, Rechnungen, Zahlungen, Ausgaben, Belege, Audit- und Importprotokolle, Einstellungen sowie Synchronisationswarteschlange und Konflikte. LocalStorage wird ausschließlich für das Farbschema verwendet.
 
-Entwürfe sind bearbeitbar. Beim Finalisieren werden eine eindeutige Nummer, Kunden- und Unternehmenssnapshot, Inhalts-Hash und PDF-Snapshot gespeichert. Finalisierte Rechnungen werden nicht still bearbeitet oder gelöscht. Korrekturen erfolgen über eine verknüpfte Stornorechnung. Kunden mit Historie werden archiviert.
+Entwürfe sind bearbeitbar. Im Cloud-Modus vergibt PostgreSQL Rechnungs- und Kundennummern atomar; eine Offline-Finalisierung ist bewusst gesperrt. Beim Finalisieren werden eine eindeutige Nummer, Kunden- und Unternehmenssnapshot, Inhalts-Hash und PDF-Snapshot gespeichert. Finalisierte Rechnungen werden zusätzlich durch Datenbank-Trigger gegen stille Änderungen oder Löschung geschützt. Korrekturen erfolgen über eine verknüpfte Stornorechnung. Kunden mit Historie werden archiviert.
 
 ## Rechnungen, PDF, Druck und Teilen
 
@@ -60,7 +66,7 @@ Vor einer Wiederherstellung werden Format und Integrität geprüft. Danach erset
 3. `Zum Home-Bildschirm` wählen.
 4. Die installierte App starten.
 
-Die App-Shell funktioniert offline. Safe Areas, große Touch-Flächen und Hoch-/Querformat werden berücksichtigt. PDF-Erzeugung, Kunden, Rechnungen, Ausgaben und Auswertungen benötigen keine Cloud-Verbindung.
+Die App-Shell funktioniert offline. Safe Areas, große Touch-Flächen und Hoch-/Querformat werden berücksichtigt. Entwürfe, Kunden, Ausgaben, Auswertungen und PDF-Erzeugung arbeiten aus dem lokalen Cache. Änderungen werden nach Wiederherstellung der Verbindung synchronisiert; Finalisierung und endgültige Nummernvergabe benötigen im Cloud-Modus eine Verbindung.
 
 ## Updates
 
@@ -68,7 +74,7 @@ Ein neuer Service Worker wird im Hintergrund erkannt, aber nicht automatisch wä
 
 ## Bekannte Einschränkungen
 
-- Version 0.1.0 erzeugt normale PDF-Rechnungen, noch keine validierten ZUGFeRD- oder XRechnung-Dateien.
+- Die App erzeugt normale PDF-Rechnungen, noch keine validierten ZUGFeRD- oder XRechnung-Dateien.
 - Ein E-Mail-Postfach zum Empfang von E-Rechnungen wird nicht innerhalb der App bereitgestellt.
 - Eine optionale lokale PIN-Sperre ist noch nicht implementiert.
 - Das historische Excel-Format enthält keine E-Mail-/Telefonangaben und kein separates Leistungs- oder Zahlungsdatum.
@@ -81,4 +87,4 @@ Die Kleinunternehmerrechnung unterstützt die Mindestangaben und den Hinweis auf
 
 ## Datenschutz und Sicherheit
 
-Es gibt kein Tracking, keine Werbung, keine CDN-Laufzeitabhängigkeit und keine automatische Übertragung von Kundendaten. Eine restriktive Content Security Policy blockiert fremde Skripte, Objekte und Verbindungen. Belegtypen und -größen werden geprüft. Abhängigkeiten sind lokal gebündelt; `npm audit` muss bei Updates erneut ausgeführt werden.
+Es gibt kein Tracking, keine Werbung und keine ungefragte Übertragung vorhandener Kundendaten. Im Cloud-Modus schützt Supabase Row Level Security jeden Datensatz über die Organisationsmitgliedschaft; Belege und PDFs liegen in privaten Storage-Buckets. Im Frontend wird nur der öffentliche Publishable-Key verwendet. Eine restriktive Content Security Policy blockiert nicht erlaubte Skripte, Objekte und Verbindungen. Belegtypen und -größen werden geprüft. Abhängigkeiten sind lokal gebündelt; `npm audit` muss bei Updates erneut ausgeführt werden.
