@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import type { AppSetting, Attachment, AuditLog, Company, Customer, Expense, ImportLog, Invoice, Payment, RecurringExpense, ServiceTemplate } from "./types";
 import type { SyncConflict, SyncMetadata, SyncQueueEntry } from "./cloud/sync/types";
 
-export const APP_VERSION = "0.5.0";
+export const APP_VERSION = "0.5.1";
 export const DB_SCHEMA_VERSION = 6;
 
 class BlitzideeDatabase extends Dexie {

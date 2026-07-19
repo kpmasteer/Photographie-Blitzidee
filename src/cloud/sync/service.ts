@@ -12,6 +12,7 @@ import {
   attachmentFromRemote, importLogFromRemote
 } from "./mapping";
 import { claimPendingChanges, markSyncComplete, markSyncFailed, recordSyncConflict, recoverInterruptedChanges, resolveSyncConflict } from "./queue";
+import { replaceLocalCacheWithCloud } from "../cacheIsolation";
 import type { RemoteRecordBundle, RemoteVersionedRow, SyncEntityType, SyncMetadata, SyncProgress, SyncQueueEntry } from "./types";
 
 type Client = NonNullable<typeof supabase>;
@@ -409,7 +410,10 @@ export class CloudSyncService {
   private stopped = false;
   private migrationAuthorized = false;
   private unsubscribeLocalChanges?: () => void;
-  private readonly onlineHandler = () => { void this.syncNow(); };
+  private refreshRunning?: Promise<void>;
+  private readonly onlineHandler = () => { void this.refreshFromCloud(); };
+  private readonly focusHandler = () => { if (document.visibilityState === "visible") void this.refreshFromCloud(); };
+  private readonly visibilityHandler = () => { if (document.visibilityState === "visible") void this.refreshFromCloud(); };
 
   constructor(readonly organizationId: string, private readonly client: Client) {}
 
@@ -429,7 +433,11 @@ export class CloudSyncService {
     await recoverInterruptedChanges(this.organizationId);
     setActiveSyncOrganization(this.organizationId);
     this.unsubscribeLocalChanges = subscribeLocalChanges(() => { void this.syncNow(); });
-    if (typeof window !== "undefined") window.addEventListener("online", this.onlineHandler);
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.onlineHandler);
+      window.addEventListener("focus", this.focusHandler);
+      document.addEventListener("visibilitychange", this.visibilityHandler);
+    }
     if (!this.migrationAuthorized) {
       const pending = await db.syncQueue.where("organizationId").equals(this.organizationId).count();
       publishProgress({ state: "idle", pending, message: "Lokale Daten warten auf Backup und bestätigte Cloud-Übernahme." });
@@ -456,7 +464,11 @@ export class CloudSyncService {
 
   stop(): void {
     this.stopped = true;
-    if (typeof window !== "undefined") window.removeEventListener("online", this.onlineHandler);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.onlineHandler);
+      window.removeEventListener("focus", this.focusHandler);
+      document.removeEventListener("visibilitychange", this.visibilityHandler);
+    }
     if (this.channel) void this.client.removeChannel(this.channel);
     this.channel = undefined;
     this.unsubscribeLocalChanges?.();
@@ -469,6 +481,20 @@ export class CloudSyncService {
       const rows = await fetchAllRows(this.client, tableForEntity[entityType], this.organizationId);
       for (const row of rows) await applyRemoteRow(this.client, this.organizationId, entityType, row);
     }
+  }
+
+  async refreshFromCloud(): Promise<void> {
+    if (this.refreshRunning) return this.refreshRunning;
+    if (!this.migrationAuthorized || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      await this.syncNow();
+      return;
+    }
+    this.refreshRunning = (async () => {
+      await this.syncNow();
+      if (!this.stopped) await this.pullRemoteChanges();
+    })();
+    try { await this.refreshRunning; }
+    finally { this.refreshRunning = undefined; }
   }
 
   async syncNow(): Promise<void> {
@@ -509,6 +535,19 @@ export class CloudSyncService {
     } catch (cause) {
       publishProgress({ state: "error", message: cause instanceof Error ? cause.message : "Synchronisierung fehlgeschlagen." });
     }
+  }
+
+  async useCloudData(): Promise<void> {
+    const authorizedAt = new Date().toISOString();
+    this.migrationAuthorized = true;
+    await replaceLocalCacheWithCloud();
+    await db.settings.put({
+      key: `cloudMigration:${this.organizationId}`,
+      value: { authorizedAt, completedAt: authorizedAt, reason: "cloud-preferred" }
+    });
+    await this.pullRemoteChanges();
+    if (!this.channel) this.subscribeRealtime();
+    await this.syncNow();
   }
 
   async migrateLocalData(): Promise<number> {
@@ -557,6 +596,7 @@ export class CloudSyncService {
     for (const table of tables) {
       channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `organization_id=eq.${this.organizationId}` }, (payload) => {
         const row = ((payload.new && Object.keys(payload.new).length ? payload.new : payload.old) ?? {}) as RemoteVersionedRow;
+        if (row.organization_id !== this.organizationId) return;
         void this.onRealtime(table, row);
       });
     }
@@ -607,13 +647,17 @@ function connectCloudOperations(service: CloudSyncService, organizationId: strin
   unsubscribeRuntimeProgress?.();
   unregisterOperations = registerCloudOperationHandlers({
     syncNow: async () => {
-      await service.syncNow();
+      await service.refreshFromCloud();
       if (!service.isMigrationAuthorized()) return { status: "unavailable", message: "Vor dem ersten Cloud-Abgleich bitte Backup und Datenübernahme bestätigen." };
       return operationResult(organizationId, "Cloud-Abgleich abgeschlossen.");
     },
     migrateLocalData: async () => {
       const queued = await service.migrateLocalData();
       return operationResult(organizationId, `${queued} lokale Datensätze wurden für die sichere Übernahme geprüft.`);
+    },
+    useCloudData: async () => {
+      await service.useCloudData();
+      return operationResult(organizationId, "Der bestätigte Cloud-Datenstand wurde auf diesem Gerät geladen. Das Sicherheitsbackup bleibt als Rückweg erhalten.");
     }
   });
   unsubscribeRuntimeProgress = subscribeSyncProgress((next) => {
@@ -629,6 +673,11 @@ function connectCloudOperations(service: CloudSyncService, organizationId: strin
 
 export async function startCloudSync(organizationId: string): Promise<CloudSyncService | undefined> {
   if (!supabase) return undefined;
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Die Cloud-Sitzung ist abgelaufen. Bitte erneut anmelden.");
+  }
+  await supabase.realtime.setAuth(data.session.access_token);
   activeService?.stop();
   const service = new CloudSyncService(organizationId, supabase);
   activeService = service;

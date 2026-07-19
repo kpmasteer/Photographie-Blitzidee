@@ -24,6 +24,7 @@ export interface Company {
   defaultIntro: string;
   defaultOutro: string;
   invoiceNumberPattern: string;
+  customerNumberConfig?: CustomerNumberConfig;
   confirmedAt?: string;
   updatedAt: string;
 }
@@ -74,7 +75,7 @@ export interface CustomerSnapshot {
   email?: string;
 }
 
-export type CompanySnapshot = Omit<Company, "confirmedAt" | "updatedAt">;
+export type CompanySnapshot = Omit<Company, "confirmedAt" | "updatedAt" | "customerNumberConfig">;
 
 export interface Invoice {
   id: string;

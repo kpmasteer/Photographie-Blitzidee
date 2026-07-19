@@ -7,8 +7,15 @@ import { getActiveSyncOrganization } from "../cloud/sync/localChanges";
 export const DEFAULT_CUSTOMER_NUMBER_CONFIG: CustomerNumberConfig = { prefix: "K-", startNumber: 1, digits: 4, nextValue: 1 };
 
 export async function getCustomerNumberConfig(): Promise<CustomerNumberConfig> {
-  const stored = await db.settings.get("customerNumberConfig");
-  return { ...DEFAULT_CUSTOMER_NUMBER_CONFIG, ...(stored?.value as Partial<CustomerNumberConfig> | undefined) };
+  const [company, stored] = await Promise.all([
+    db.company.get("company"),
+    db.settings.get("customerNumberConfig")
+  ]);
+  return {
+    ...DEFAULT_CUSTOMER_NUMBER_CONFIG,
+    ...(stored?.value as Partial<CustomerNumberConfig> | undefined),
+    ...company?.customerNumberConfig
+  };
 }
 
 export async function allocateCustomerNumber(): Promise<string> {

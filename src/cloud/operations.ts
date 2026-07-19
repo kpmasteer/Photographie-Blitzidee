@@ -28,9 +28,11 @@ export interface LocalMigrationRequest {
 export interface CloudOperationHandlers {
   syncNow?: () => Promise<CloudOperationResult>;
   migrateLocalData?: (request: LocalMigrationRequest) => Promise<CloudOperationResult>;
+  useCloudData?: (request: LocalMigrationRequest) => Promise<CloudOperationResult>;
 }
 
 export const MIGRATION_CONFIRMATION_TEXT = "DATEN ÜBERNEHMEN";
+export const CLOUD_PREFERRED_CONFIRMATION_TEXT = "CLOUD VERWENDEN";
 
 const STORAGE_KEY = "blitzidee-cloud-runtime-status";
 const listeners = new Set<() => void>();
@@ -96,6 +98,16 @@ export function setCloudConnectivity(online: boolean) {
   reportCloudRuntimeStatus({ online });
 }
 
+export function resetCloudRuntimeStatus() {
+  runtimeStatus = {
+    online: typeof navigator === "undefined" ? true : navigator.onLine,
+    phase: "idle",
+    pendingChanges: 0
+  };
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* private mode */ }
+  listeners.forEach((listener) => listener());
+}
+
 /**
  * Integration point for the sync engine. Registering only wires capabilities;
  * it never starts a write operation by itself.
@@ -128,6 +140,16 @@ export async function requestManualSync(): Promise<CloudOperationResult> {
     reportCloudRuntimeStatus({ phase: "error", lastError: message });
     throw new Error(message);
   }
+}
+
+export async function requestUseCloudData(request: LocalMigrationRequest): Promise<CloudOperationResult> {
+  if (!request.confirmed || request.confirmationText !== CLOUD_PREFERRED_CONFIRMATION_TEXT) {
+    throw new Error("Das Verwenden der Cloud-Daten wurde nicht ausdrücklich bestätigt.");
+  }
+  if (!request.backupCreatedAt) throw new Error("Vor dem Wechsel auf Cloud-Daten muss ein aktuelles Backup erstellt werden.");
+  if (!runtimeStatus.online) return { status: "unavailable", message: "Keine Internetverbindung. Lokale Daten wurden nicht verändert." };
+  if (!handlers.useCloudData) return { status: "unavailable", message: "Der Cloud-Datenstand ist noch nicht mit dem Synchronisationsdienst verbunden." };
+  return handlers.useCloudData(request);
 }
 
 export async function requestLocalMigration(request: LocalMigrationRequest): Promise<CloudOperationResult> {

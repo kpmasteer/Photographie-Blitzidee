@@ -13,6 +13,7 @@ import type { Company, Invoice, InvoiceItem, InvoiceStatus, Payment } from "../t
 import { useCloud } from "../cloud/context";
 import { cancelCloudInvoice, finalizeCloudInvoice, sealCloudInvoice } from "../cloud/invoiceActions";
 import { withRemoteWriteSuppressed } from "../cloud/sync/localChanges";
+import { confirmCloudWrite } from "../cloud/writeFeedback";
 
 const statusLabels: Record<InvoiceStatus, string> = { draft: "Entwurf", finalized: "Finalisiert", sent: "Versendet", partially_paid: "Teilbezahlt", paid: "Bezahlt", overdue: "Überfällig", cancelled: "Storniert" };
 
@@ -24,8 +25,8 @@ function EditableChoice({ label, value, disabled, options, multiline = false, pl
 }
 
 const snapshotCompany = (company: Company) => {
-  const { confirmedAt: _confirmedAt, updatedAt: _updatedAt, ...snapshot } = company;
-  void _confirmedAt; void _updatedAt;
+  const { confirmedAt: _confirmedAt, updatedAt: _updatedAt, customerNumberConfig: _customerNumberConfig, ...snapshot } = company;
+  void _confirmedAt; void _updatedAt; void _customerNumberConfig;
   return snapshot;
 };
 
@@ -100,7 +101,7 @@ export function InvoiceEditor() {
   const normalizePrices = () => (form?.items || []).every((item) => commitPrice(item));
   const save = async () => {
     if (!form || !canWrite) return; setBusy(true);
-    try { if (!normalizePrices()) { setErrors(["Bitte korrigieren Sie ungültige Einzelpreise."]); return; } const before = await db.invoices.get(form.id); await db.invoices.put(form); await audit(before ? "update" : "create", "invoice", form.id, before, form); setMessage("Entwurf gespeichert."); if (!invoiceId) navigate(`/invoices/${form.id}`, { replace: true }); }
+    try { if (!normalizePrices()) { setErrors(["Bitte korrigieren Sie ungültige Einzelpreise."]); return; } const before = await db.invoices.get(form.id); await db.invoices.put(form); await audit(before ? "update" : "create", "invoice", form.id, before, form); setMessage(await confirmCloudWrite(cloud, "Entwurf")); if (!invoiceId) navigate(`/invoices/${form.id}`, { replace: true }); }
     finally { setBusy(false); }
   };
   const nextInvoiceNumber = async () => {

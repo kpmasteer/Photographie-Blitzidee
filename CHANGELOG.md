@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.1 - 2026-07-20
+
+- Supabase als verbindlichen zentralen Datenstand für die Mehrgerätenutzung stabilisiert
+- E-Mail-/Passwort-Anmeldung, Sitzungswiederherstellung und serververwaltete Organisationsfreigabe fertiggestellt
+- explizite Realtime-Authentifizierung ergänzt; Änderungen werden zwischen angemeldeten Geräten übernommen
+- Aktualisierung bei App-Fokus, Sichtbarkeit und wiederhergestellter Internetverbindung ergänzt
+- manuellen Sync auf Senden und anschließendes Laden des Cloud-Stands erweitert
+- lokale Bestandsmigration nur nach Vorschau, Backup und ausdrücklicher Bestätigung freigegeben
+- sichere Option „Cloud-Daten verwenden“ mit Backup und eigenem Bestätigungstext ergänzt
+- benutzer- und organisationsgebundene Cache-Trennung beim Konto- und Organisationswechsel eingeführt
+- Abmeldung gegen ausstehende Änderungen, Konflikte und ungesicherte lokale Bestandsdaten abgesichert
+- Speichermeldungen unterscheiden zwischen synchronisiert und zur Synchronisierung vorgemerkt
+- Kundenummernkonfiguration in die synchronisierten Unternehmenseinstellungen aufgenommen
+- serverseitige Finalisierung und konkurenzsichere, fortlaufende Rechnungsnummern in Produktion geprüft
+- RLS-, anonyme Zugriffs-, Fremdkonto-, Organisationsmanipulations- und Kontowechseltests bestanden
+- temporäre Testkonten und der löschbare Testentwurf bereinigt; Auditspuren und Nummernkreis unverändert erhalten
+- App-Version, Dokumentation, Build- und Deployment-Konfiguration auf v0.5.1 aktualisiert
+
 ## 0.5.0 - 2026-07-11
 
 - Supabase-Projekt für die produktive Mehrgerätenutzung eingerichtet und alle versionierten Datenbankmigrationen angewendet

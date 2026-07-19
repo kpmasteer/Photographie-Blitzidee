@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildLocalMigrationPreview } from "./localMigration";
 import {
+  CLOUD_PREFERRED_CONFIRMATION_TEXT,
   MIGRATION_CONFIRMATION_TEXT,
   registerCloudOperationHandlers,
   reportCloudRuntimeStatus,
-  requestLocalMigration
+  requestLocalMigration,
+  requestUseCloudData
 } from "./operations";
 
 const preview = buildLocalMigrationPreview({
@@ -41,5 +43,29 @@ describe("requestLocalMigration", () => {
     });
     expect(result.status).toBe("completed");
     expect(migrate).toHaveBeenCalledOnce();
+
+describe("requestUseCloudData", () => {
+  it("ersetzt lokale Daten nur nach Backup und eigenem Bestätigungstext", async () => {
+    const useCloudData = vi.fn(async () => ({ status: "completed" as const, message: "Cloud geladen" }));
+    unregister = registerCloudOperationHandlers({ useCloudData });
+    reportCloudRuntimeStatus({ online: true });
+
+    await expect(requestUseCloudData({
+      preview,
+      backupCreatedAt: "2026-07-20T10:00:00.000Z",
+      confirmationText: MIGRATION_CONFIRMATION_TEXT,
+      confirmed: true
+    })).rejects.toThrow("ausdrücklich bestätigt");
+
+    const result = await requestUseCloudData({
+      preview,
+      backupCreatedAt: "2026-07-20T10:00:00.000Z",
+      confirmationText: CLOUD_PREFERRED_CONFIRMATION_TEXT,
+      confirmed: true
+    });
+    expect(result.status).toBe("completed");
+    expect(useCloudData).toHaveBeenCalledOnce();
+  });
+});
   });
 });

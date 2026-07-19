@@ -1,12 +1,12 @@
 # Photographie Blitzidee Rechnungs-PWA
 
-Version 0.5.0 ist eine installierbare, local-first Rechnungs- und Ausgabenverwaltung für Photographie Blitzidee. Mit konfiguriertem Supabase-Projekt synchronisiert sie verschlüsselt über HTTPS zwischen Geräten; IndexedDB bleibt Offline-Cache. Mobile Backups verwenden das native Speichern-/Teilen-Menü. Vorhandene lokale Kundendaten werden niemals ungefragt übertragen.
+Version 0.5.1 ist eine installierbare Rechnungs- und Ausgaben-PWA mit einem verbindlichen gemeinsamen Supabase-Datenstand. IndexedDB dient als Offline-Cache und Warteschlange, nicht als konkurrierende Hauptdatenbank. Mobile Backups verwenden das native Speichern-/Teilen-Menü; vorhandene lokale Kundendaten werden niemals ungefragt übertragen.
 
-## Cloud- und lokale Betriebsart
+## Cloud-Betrieb und Offline-Cache
 
-Für den Cloud-Modus `.env.example` nach `.env.local` kopieren und ausschließlich `VITE_SUPABASE_URL` sowie den öffentlichen Publishable-/Anon-Key setzen. Niemals einen Secret- oder Service-Role-Key verwenden. Ohne diese Variablen bleibt die App vollständig lokal nutzbar. Einrichtung, Migration, Datenschutz und Konfliktverhalten stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
+Für Entwicklung und Bereitstellung `.env.example` nach `.env.local` kopieren und ausschließlich `VITE_SUPABASE_URL` sowie `VITE_SUPABASE_ANON_KEY` mit dem öffentlichen Publishable-/Anon-Key setzen. Secret-, Service-Role-, Datenbank- oder JWT-Schlüssel gehören niemals in Frontend, Repository oder Build. Fehlt die Konfiguration, zeigt die App einen verständlichen Einrichtungszustand und lädt keine Fachdaten. Details stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
 
-Nach der Anmeldung per Magic Link wird eine Organisation gewählt oder einmalig erstellt. Ein frisches Gerät lädt den vorhandenen Cloud-Bestand. Erkennt die App bereits lokale Geschäftsdaten, sperrt sie die automatische Übertragung: Erst die Analyse im Bereich `Einstellungen → Cloud & Synchronisation`, ein erzeugtes Backup und die Bestätigung `DATEN ÜBERNEHMEN` starten die wiederaufnehmbare Migration.
+Die Anmeldung erfolgt mit E-Mail-Adresse und Passwort. Organisationszuordnungen werden serverseitig verwaltet; ein nicht freigeschaltetes Konto sieht keine Fachdaten. Ein frisches Gerät lädt nach der Freigabe den vorhandenen Cloud-Bestand. Erkennt die App lokale Geschäftsdaten, sperrt sie die automatische Übertragung: Erst Analyse, Backup und die Bestätigung `DATEN ÜBERNEHMEN` starten die wiederaufnehmbare Migration. Die Alternative `CLOUD VERWENDEN` benötigt ebenfalls ein Backup und eine eigene Bestätigung.
 
 ## Installation und Start
 
@@ -24,10 +24,30 @@ Produktionsprüfung und Vorschau:
 
 ```bash
 npm run lint
+npm run typecheck
 npm test
 npm run build
 npm run preview
 ```
+
+## Produktive Einrichtung
+
+1. Migrationen aus `supabase/migrations` in Zeitstempelreihenfolge anwenden und anschließend den Supabase Security Advisor prüfen.
+2. In Supabase unter `Authentication → URL Configuration` die Render-Adresse als Site URL und die lokalen Entwicklungsadressen als erlaubte Redirect-URLs hinterlegen.
+3. Den ersten bestätigten Auth-Benutzer im Supabase-Dashboard anlegen und im SQL Editor einmalig serverseitig zuordnen:
+
+```sql
+select private.provision_first_owner(
+  '<AUTH-USER-UUID>'::uuid,
+  'Lidia Lang'
+);
+```
+
+Die Funktion ist nur für den Datenbankbetrieb beziehungsweise die Service-Rolle ausführbar. Das Frontend kann sich nicht selbst zum Owner machen. Weitere Nutzer werden ebenfalls serverseitig oder von einem bestehenden Owner freigegeben.
+
+Render verwendet `npm ci && npm run build`, den Publish-Ordner `dist`, die beiden öffentlichen Supabase-Variablen und den SPA-Rewrite `/* → /index.html`.
+
+Beim ersten Cloud-Start mit lokalen Daten im Bereich `Einstellungen → Cloud & Synchronisation` zuerst die Vorschau prüfen und ein vollständiges Backup erzeugen. Ein abgebrochener Upload kann wegen stabiler IDs und wiederholbarer Queue erneut gestartet werden; die lokalen Originaldaten bleiben bis zum bestätigten Abschluss erhalten.
 
 ## Erster Start
 

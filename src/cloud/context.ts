@@ -28,6 +28,7 @@ export interface CloudContextValue {
   roleLabel?: string;
   organizationName?: string;
   signOut: () => Promise<void>;
+  changePassword: (nextPassword: string) => Promise<void>;
   syncNow: () => Promise<CloudOperationResult>;
 }
 
@@ -57,6 +58,7 @@ export const CloudContext = createContext<CloudContextValue>({
   syncStatus: defaultStatus.label,
   statusTone: defaultStatus.tone,
   signOut: async () => undefined,
+  changePassword: async () => undefined,
   syncNow: async () => ({ status: "unavailable", message: "Cloud ist nicht eingerichtet." })
 });
 

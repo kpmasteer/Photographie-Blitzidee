@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertTriangle, CheckCircle2, Cloud, CloudOff, DatabaseBackup, HardDrive, Laptop, LogOut, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cloud, CloudOff, DatabaseBackup, HardDrive, KeyRound, Laptop, LogOut, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
 import { useCloud } from "../cloud/context";
 import { getCurrentDeviceInfo } from "../cloud/device";
 import { analyzeLocalDataForMigration, type LocalMigrationPreview } from "../cloud/localMigration";
-import { MIGRATION_CONFIRMATION_TEXT, requestLocalMigration } from "../cloud/operations";
+import { CLOUD_PREFERRED_CONFIRMATION_TEXT, MIGRATION_CONFIRMATION_TEXT, requestLocalMigration, requestUseCloudData } from "../cloud/operations";
 import { exportBackup } from "../lib/backup";
 import { db } from "../db";
 import { resolveCloudConflict } from "../cloud/sync/service";
@@ -32,11 +32,14 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
   }, [cloud.membership?.organization_id], []);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"sync" | "analysis" | "backup" | "migration">();
+  const [busy, setBusy] = useState<"sync" | "analysis" | "backup" | "migration" | "password">();
   const [preview, setPreview] = useState<LocalMigrationPreview>();
   const [backupCreatedAt, setBackupCreatedAt] = useState("");
   const [confirmationText, setConfirmationText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [migrationReport, setMigrationReport] = useState<{ preview: LocalMigrationPreview; completedAt: string }>();
   const [migrationDeferred, setMigrationDeferred] = useState(() => {
     try { return Boolean(localStorage.getItem(MIGRATION_DEFERRED_KEY)); } catch { return false; }
   });
@@ -55,7 +58,7 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
     }
   };
   const signOut = async () => {
-    if (!window.confirm("Dieses Gerät abmelden? Die Anmeldung auf anderen Geräten bleibt bestehen und lokale Daten werden nicht gelöscht.")) return;
+    if (!window.confirm("Dieses Gerät abmelden? Synchronisierte Kontodaten werden aus dem lokalen Cache entfernt. Noch nicht übertragene Bestandsdaten bleiben geschützt.")) return;
     clearFeedback();
     try { await cloud.signOut(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Abmeldung fehlgeschlagen."); }
   };
@@ -116,12 +119,50 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
       }
       const result = await requestLocalMigration({ preview, backupCreatedAt, confirmationText, confirmed: true });
       setMessage(result.message);
-      if (result.status === "completed") {
+      if (result.status === "completed" && (result.pendingChanges ?? 0) === 0) {
+        setMigrationReport({ preview: currentPreview, completedAt: new Date().toISOString() });
         setPreview(undefined);
         setBackupCreatedAt("");
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Die Cloud-Übernahme ist fehlgeschlagen.");
+    } finally {
+      setBusy(undefined);
+    }
+  };
+  const preferCloudData = async () => {
+    if (!preview || !backupCreatedAt) return;
+    const confirmation = window.prompt(`Zum Laden des zentralen Cloud-Datenstands bitte ${CLOUD_PREFERRED_CONFIRMATION_TEXT} eingeben. Das soeben erstellte Backup bleibt erhalten.`);
+    if (confirmation !== CLOUD_PREFERRED_CONFIRMATION_TEXT) return;
+    clearFeedback();
+    setBusy("migration");
+    try {
+      const currentPreview = await analyzeLocalDataForMigration();
+      if (currentPreview.id !== preview.id) throw new Error("Die lokalen Daten haben sich seit der Vorschau verändert. Bitte neu prüfen und ein frisches Backup erstellen.");
+      const result = await requestUseCloudData({ preview, backupCreatedAt, confirmationText: confirmation, confirmed: true });
+      setMessage(result.message);
+      if (result.status === "completed") {
+        setPreview(undefined);
+        setBackupCreatedAt("");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Der Cloud-Datenstand konnte nicht geladen werden.");
+    } finally {
+      setBusy(undefined);
+    }
+  };
+  const updatePassword = async () => {
+    clearFeedback();
+    if (newPassword.length < 8) return setError("Das neue Passwort muss mindestens acht Zeichen lang sein.");
+    if (newPassword !== passwordConfirmation) return setError("Die beiden Passworteingaben stimmen nicht überein.");
+    setBusy("password");
+    try {
+      await cloud.changePassword(newPassword);
+      setNewPassword("");
+      setPasswordConfirmation("");
+      setMessage("Passwort wurde geändert.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Das Passwort konnte nicht geändert werden.");
     } finally {
       setBusy(undefined);
     }
@@ -143,6 +184,7 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
     <h2>Cloud & dieses Gerät</h2>
     <p className="section-note">Die App bleibt offline nutzbar. Sobald eine Verbindung besteht, kann der geschützte Datenbereich abgeglichen werden.</p>
     {(message || error) && <div className={`notice cloud-notice ${error ? "error" : "success"}`}>{error || message}</div>}
+    {migrationReport && <div className="notice success migration-report"><CheckCircle2 /><span><strong>Cloud-Migration abgeschlossen</strong><small>{migrationReport.preview.counts.customers} Kunden · {migrationReport.preview.counts.invoices} Rechnungen · {migrationReport.preview.counts.invoiceItems} Positionen · {migrationReport.preview.counts.expenses} Ausgaben · {migrationReport.preview.counts.templates} Vorlagen · 0 Fehler · {formatDateTime(migrationReport.completedAt)}</small></span></div>}
 
     <div className="cloud-overview">
       <div className={`cloud-state-card ${cloud.statusTone}`}><span>{cloud.runtime.online ? <Cloud /> : <CloudOff />} Verbindung</span><strong>{cloud.syncStatus}</strong><small>{cloud.configured ? (cloud.organizationName || "Organisation wird geladen") : "Cloud in dieser Installation nicht aktiviert"}</small></div>
@@ -161,6 +203,14 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
         <button className="primary" disabled={!cloud.runtime.online || busy === "sync" || cloud.runtime.phase === "syncing"} onClick={() => void syncNow()}><RefreshCw className={busy === "sync" ? "spin" : ""} /> {busy === "sync" ? "Abgleich läuft …" : "Jetzt synchronisieren"}</button>
         <button className="secondary" onClick={() => void signOut()}><LogOut /> Dieses Gerät abmelden</button>
       </div>
+      <div className="password-change">
+        <h3><KeyRound /> Passwort ändern</h3>
+        <div className="form-grid">
+          <label>Neues Passwort<input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+          <label>Passwort wiederholen<input type="password" autoComplete="new-password" minLength={8} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} /></label>
+        </div>
+        <button className="secondary" disabled={busy === "password" || !newPassword || !passwordConfirmation} onClick={() => void updatePassword()}>{busy === "password" ? "Passwort wird geändert …" : "Passwort ändern"}</button>
+      </div>
       {conflicts.length > 0 && <div className="sync-conflicts">
         <h3><AlertTriangle /> {conflicts.length} {conflicts.length === 1 ? "Datenkonflikt" : "Datenkonflikte"}</h3>
         <p>Keine Version wird still überschrieben. Bitte je Datensatz auswählen, welche Fassung gelten soll.</p>
@@ -172,7 +222,7 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
     </> : <div className="cloud-local-info"><HardDrive /><span><strong>Lokaler Betrieb</strong><small>Alle Daten bleiben ausschließlich in diesem Browser. Backups sind weiterhin möglich.</small></span></div>}
 
     {cloud.configured && cloud.session && cloud.membership && migrationGate.loading && <p className="section-note migration-gate-loading">Status der ersten Cloud-Übernahme wird geprüft …</p>}
-    {cloud.configured && cloud.session && cloud.membership && !migrationGate.loading && migrationGate.value?.authorizedAt && <div className="migration-authorized"><CheckCircle2 /><span><strong>{migrationGate.value.reason === "empty-device" ? "Frisches Gerät automatisch verbunden" : "Lokale Übernahme freigegeben"}</strong><small>{migrationGate.value.completedAt ? `Abgeschlossen am ${formatDateTime(migrationGate.value.completedAt)}` : "Der Abgleich wird fortgesetzt, bis alle Änderungen übertragen oder als Konflikt gemeldet sind."}</small></span></div>}
+    {cloud.configured && cloud.session && cloud.membership && !migrationGate.loading && migrationGate.value?.authorizedAt && <div className="migration-authorized"><CheckCircle2 /><span><strong>{migrationGate.value.reason === "empty-device" ? "Frisches Gerät automatisch verbunden" : migrationGate.value.reason === "cloud-preferred" ? "Cloud-Datenstand verwendet" : "Lokale Übernahme freigegeben"}</strong><small>{migrationGate.value.completedAt ? `Abgeschlossen am ${formatDateTime(migrationGate.value.completedAt)}` : "Der Abgleich wird fortgesetzt, bis alle Änderungen übertragen oder als Konflikt gemeldet sind."}</small></span></div>}
     {cloud.configured && cloud.session && cloud.membership && !migrationGate.loading && !migrationGate.value?.authorizedAt && !mayMigrate && <div className="migration-assistant"><div className="migration-heading"><ShieldCheck /><div><h3>Lokale Datenübernahme</h3><p>Nur die Inhaberin kann eine erstmalige Übernahme in den gemeinsamen Datenbestand freigeben. Lokale Daten bleiben bis dahin unverändert.</p></div></div></div>}
     {cloud.configured && cloud.session && cloud.membership && !migrationGate.loading && !migrationGate.value?.authorizedAt && mayMigrate && <div className="migration-assistant">
       <div className="migration-heading"><UploadCloud /><div><h3>Lokale Daten einmalig übernehmen</h3><p>Vor einer Übernahme werden die vorhandenen Daten nur gelesen, gezählt und auf Beziehungen geprüft.</p></div></div>
@@ -195,6 +245,9 @@ export function CloudSettingsPanel({ backupPassword }: { backupPassword?: string
             <label className="check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Ich habe Vorschau und Backup geprüft und möchte die lokalen Daten jetzt übernehmen.</label>
             <label>Zur Bestätigung <strong>{MIGRATION_CONFIRMATION_TEXT}</strong> eingeben<input value={confirmationText} onChange={(event) => setConfirmationText(event.target.value)} autoComplete="off" /></label>
             <button className="primary full" disabled={busy === "migration" || !confirmed || confirmationText !== MIGRATION_CONFIRMATION_TEXT || !cloud.runtime.online} onClick={() => void migrate()}><UploadCloud /> {busy === "migration" ? "Übernahme läuft …" : "Bestätigt in die Cloud übernehmen"}</button>
+            <hr />
+            <p><strong>Alternativ:</strong> Den bereits zentral gespeicherten Datenstand laden. Das Sicherheitsbackup bewahrt die lokalen Ausgangsdaten als Rückweg.</p>
+            <button className="secondary full" disabled={busy === "migration" || !cloud.runtime.online} onClick={() => void preferCloudData()}><Cloud /> Cloud-Daten verwenden</button>
           </div>}
         </>}
         <div className="migration-footer-actions"><button className="small-button" onClick={deferMigration}>Später entscheiden</button>{preview.freshDevice && <button className="primary" onClick={() => { setPreview(undefined); void syncNow(); }}>Cloud-Daten synchronisieren</button>}</div>

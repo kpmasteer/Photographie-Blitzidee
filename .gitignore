@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.supabase/
+node_modules/
+dist/
+.DS_Store
+tmp/
+output/
+*.orig
+*.rej
+supabase_rechnungsapp_v0.5.0_complete.sql
+SPRINT_REPORT_*.md
+supabase/migrations/20260720113000_rechnungsapp_v051_owner_claim_hardening.sql
