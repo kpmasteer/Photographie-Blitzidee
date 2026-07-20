@@ -4,7 +4,7 @@ Version 0.5.1 ist eine installierbare Rechnungs- und Ausgaben-PWA mit einem verb
 
 ## Cloud-Betrieb und Offline-Cache
 
-Für Entwicklung und Bereitstellung `.env.example` nach `.env.local` kopieren und ausschließlich `VITE_SUPABASE_URL` sowie `VITE_SUPABASE_ANON_KEY` mit dem öffentlichen Publishable-/Anon-Key setzen. Secret-, Service-Role-, Datenbank- oder JWT-Schlüssel gehören niemals in Frontend, Repository oder Build. Fehlt die Konfiguration, zeigt die App einen verständlichen Einrichtungszustand und lädt keine Fachdaten. Details stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
+Der Produktionsbuild enthält ausschließlich die öffentliche Projekt-URL und den öffentlichen Supabase-Publishable-Key. Für Entwicklung oder eine abweichende Bereitstellung können `VITE_SUPABASE_URL` und `VITE_SUPABASE_ANON_KEY` diese Vorgaben überschreiben. Secret-, Service-Role-, Datenbank- oder JWT-Schlüssel gehören niemals in Frontend, Repository oder Build. Details stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
 
 Die Anmeldung erfolgt mit E-Mail-Adresse und Passwort. Organisationszuordnungen werden serverseitig verwaltet; ein nicht freigeschaltetes Konto sieht keine Fachdaten. Ein frisches Gerät lädt nach der Freigabe den vorhandenen Cloud-Bestand. Erkennt die App lokale Geschäftsdaten, sperrt sie die automatische Übertragung: Erst Analyse, Backup und die Bestätigung `DATEN ÜBERNEHMEN` starten die wiederaufnehmbare Migration. Die Alternative `CLOUD VERWENDEN` benötigt ebenfalls ein Backup und eine eigene Bestätigung.
 
