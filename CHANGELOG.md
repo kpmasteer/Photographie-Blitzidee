@@ -16,6 +16,7 @@
 - serverseitige Finalisierung und konkurenzsichere, fortlaufende Rechnungsnummern in Produktion geprüft
 - RLS-, anonyme Zugriffs-, Fremdkonto-, Organisationsmanipulations- und Kontowechseltests bestanden
 - temporäre Testkonten und der löschbare Testentwurf bereinigt; Auditspuren und Nummernkreis unverändert erhalten
+- Produktions-CSP und öffentliche Supabase-Konfiguration für HTTPS- und Realtime-Verbindungen abgesichert
 - App-Version, Dokumentation, Build- und Deployment-Konfiguration auf v0.5.1 aktualisiert
 
 ## 0.5.0 - 2026-07-11
