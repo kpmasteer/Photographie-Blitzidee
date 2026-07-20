@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["icons/*.png", "Logo Photographie Blitzidee Neu.png", "logo-rechnung.png", "logo-rechnung.jpg"],
       manifest: {
         name: "Photographie Blitzidee Rechnungen",
@@ -28,6 +28,8 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: []
       }
     })

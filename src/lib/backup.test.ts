@@ -5,7 +5,7 @@ import { db } from "../db";
 import { createBackupBlob, restoreBackup } from "./backup";
 import { defaultCompany } from "./seed";
 
-const tables = [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings];
+const tables = [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings, db.syncLogs];
 
 beforeEach(async () => {
   await db.open();
@@ -19,12 +19,19 @@ describe("vollständiges Backup und Restore", () => {
   it("stellt Datensätze und Blob-Anhänge in einer leeren Datenbank wieder her", async () => {
     const { blob } = await createBackupBlob();
     await db.transaction("rw", tables, async () => Promise.all(tables.map((table) => table.clear())));
+    await db.syncLogs.put({
+      id: "old-device-log", organizationId: "old-organization", trigger: "manual",
+      startedAt: "2026-07-20T09:00:00.000Z", finishedAt: "2026-07-20T09:00:01.000Z",
+      durationMs: 1_000, downloaded: 1, uploaded: 0, changed: 0, deleted: 0,
+      conflicts: 0, failed: 0
+    });
     const file = new File([await blob.arrayBuffer()], "backup.json", { type: "application/json" });
     const result = await restoreBackup(file as unknown as globalThis.File);
     expect(result.customers).toBe(1);
     expect(await db.company.count()).toBe(1);
     expect(await db.customers.count()).toBe(1);
     const attachment = await db.attachments.get("backup-file");
+    expect(await db.syncLogs.count()).toBe(0);
     expect(await attachment?.blob.text()).toBe("test");
   });
 

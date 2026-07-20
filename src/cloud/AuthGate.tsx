@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Cloud, CloudOff, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import { cloudConfigured } from "./config";
@@ -68,6 +68,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [membershipReload, setMembershipReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const runtime = useSyncExternalStore(subscribeCloudRuntimeStatus, getCloudRuntimeStatus, getCloudRuntimeStatus);
+  const syncIdentity = session && membership ? `${session.user.id}:${membership.organization_id}` : "";
+  const [cloudStartState, setCloudStartState] = useState<{ identity: string; status: "ready" | "error"; message?: string }>();
+  const markCloudReady = useCallback(() => {
+    setCloudStartState({ identity: syncIdentity, status: "ready" });
+  }, [syncIdentity]);
+  const markCloudError = useCallback((cloudMessage: string) => {
+    setCloudStartState({ identity: syncIdentity, status: "error", message: cloudMessage });
+  }, [syncIdentity]);
+  const cloudReady = cloudStartState?.identity === syncIdentity && cloudStartState.status === "ready";
+  const cloudStartError = cloudStartState?.identity === syncIdentity && cloudStartState.status === "error"
+    ? cloudStartState.message
+    : undefined;
 
   useEffect(() => {
     const updateConnectivity = () => setCloudConnectivity(navigator.onLine);
@@ -268,5 +280,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
     </section></main>;
   }
 
-  return <CloudContext.Provider value={contextValue}><CloudSyncRuntime />{children}</CloudContext.Provider>;
+  const appContent = cloudReady
+    ? children
+    : cloudStartError
+      ? <main className="setup"><section className="setup-card compact-auth-card">
+        <CloudOff className="setup-symbol" />
+        <h1>Cloud-Datenstand nicht geladen</h1>
+        <p>{cloudStartError} Der möglicherweise ältere Gerätecache wird deshalb nicht angezeigt.</p>
+        <button className="primary full" onClick={() => window.location.reload()}><RefreshCw /> Erneut versuchen</button>
+      </section></main>
+      : <main className="splash"><p>Aktueller Cloud-Datenstand wird geladen …</p></main>;
+
+  return <CloudContext.Provider value={contextValue}><CloudSyncRuntime onReady={markCloudReady} onError={markCloudError} />{appContent}</CloudContext.Provider>;
 }

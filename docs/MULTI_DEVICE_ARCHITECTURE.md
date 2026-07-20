@@ -2,7 +2,7 @@
 
 ## Aktueller Zustand
 
-Die App bleibt ohne gesetzte Supabase-Variablen vollständig lokal. Mit Konfiguration stehen Magic-Link-Anmeldung, Organisationseinrichtung, Push/Pull-Synchronisation, Realtime, Konfliktoberfläche und ein abgesicherter Migrationsassistent bereit. Ein frisches Gerät lädt den Organisationsbestand automatisch; ein Gerät mit vorhandenen lokalen Geschäftsdaten überträgt nichts, bevor Analyse, Backup und ausdrückliche Bestätigung abgeschlossen wurden.
+Mit Produktionskonfiguration ist Supabase die einzige maßgebliche Datenquelle. Nach E-Mail-/Passwort-Anmeldung und serverseitiger Organisationszuordnung sendet die App nur vorgemerkte Offline-Änderungen und ersetzt anschließend den bewiesenen lokalen Cache durch einen vollständigen Cloud-Snapshot. Ein frisches Gerät lädt den Organisationsbestand automatisch; ein Gerät mit vorhandenen lokalen Geschäftsdaten überträgt nichts, bevor Analyse, Backup und ausdrückliche Bestätigung abgeschlossen wurden.
 
 ## Umgesetzte Schichten
 
@@ -12,9 +12,12 @@ Die App bleibt ohne gesetzte Supabase-Variablen vollständig lokal. Mit Konfigur
 - Supabase Auth Gate mit wiederherstellbarer Sitzung
 - versionierte Dexie-Outbox, Synchronisationsmetadaten und Konfliktspeicher
 - deterministische Zuordnung lokaler IDs zu Cloud-UUIDs
-- Realtime-Pull ohne erneute Upload-Schleife
+- entprellte Realtime-Signale für Einfügen, Ändern und Löschen mit anschließendem Vollabgleich
 - wiederaufnehmbare Daten- und Anhangsmigration mit Import-Batches
 - versionierte SQL-Migration mit Organisationen, Rollen, RLS, Realtime, Storage und Audit
+- atomare Cache-Reconciliation mit Schutz aller ausstehenden Queue-Datensätze
+- automatische Bereinigung nicht mehr vorhandener Rechnungen, Zahlungen und abhängiger Daten
+- unsichtbares lokales Diagnoseprotokoll mit maximal 50 Synchronisationsläufen pro Organisation
 - atomare serverseitige Organisationserstellung, Kunden-/Rechnungsnummernvergabe, Finalisierung, historische Übernahme und Stornierung
 
 ## Sichere Zielarchitektur
@@ -27,7 +30,11 @@ Referenzen für die spätere Umsetzung: [Supabase Row Level Security](https://su
 
 ## Synchronisation und Konflikte
 
-Lokale Änderungen werden mit UUID, Basisversion, Zeitstempel und Status in eine Outbox geschrieben. Der Server bestätigt angewandte Änderungen. Stammdaten können feld- oder versionsbasiert zusammengeführt werden; finalisierte Rechnungen sind unveränderlich. Konflikte an finalisierten Belegen dürfen nicht automatisch überschrieben werden.
+Lokale Änderungen werden mit UUID, Basisversion, Zeitstempel und Status in eine Outbox geschrieben. Bei bestehender Verbindung gilt in jedem Lauf: Outbox senden, danach vollständigen Cloud-Snapshot laden, Beziehungen materialisieren und den lokalen Cache in einer IndexedDB-Transaktion ersetzen. Datensätze mit noch ausstehender lokaler Änderung werden von Ersatz und Bereinigung ausgenommen. Ist die lokale Änderung älter, gewinnt die Cloud; ist sie nachweislich neuer, wird sie vor dem Snapshot hochgeladen; ohne belastbare Zeitordnung entsteht ein sichtbarer Konflikt.
+
+Rechnungspositionen werden nicht separat im Cache fortgeschrieben, sondern immer als vollständiger Bestandteil ihrer Rechnung ersetzt. Dadurch werden auch gelöschte Positionen sicher übernommen. Zahlungen ohne vorhandene Cloud-Rechnung und Anhänge ohne vorhandenen Eigentümer werden nicht materialisiert. Seiten mit Dexie-Live-Abfragen aktualisieren sich nach dem atomaren Commit ohne App-Neustart.
+
+Eine nummerierte Rechnung, die ohne Cloud-Tombstone unerklärlich im vollständigen Snapshot fehlt, wird lokal nicht still verworfen. Die App hält sie als Integritätskonflikt fest. Finalisierte Rechnungen bleiben außerdem serverseitig unveränderlich.
 
 Rechnungsnummern werden ausschließlich serverseitig in einer PostgreSQL-Transaktion aus einem Nummernkreis pro Jahr vergeben und durch einen eindeutigen Index geschützt. Offline können Entwürfe erstellt, aber nicht endgültig finalisiert werden. Historische Rechnungsnummern werden über einen getrennten, geschützten Importpfad unverändert übernommen.
 

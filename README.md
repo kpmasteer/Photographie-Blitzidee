@@ -1,12 +1,14 @@
 # Photographie Blitzidee Rechnungs-PWA
 
-Version 0.5.1 ist eine installierbare Rechnungs- und Ausgaben-PWA mit einem verbindlichen gemeinsamen Supabase-Datenstand. IndexedDB dient als Offline-Cache und Warteschlange, nicht als konkurrierende Hauptdatenbank. Mobile Backups verwenden das native Speichern-/Teilen-Menü; vorhandene lokale Kundendaten werden niemals ungefragt übertragen.
+Version 0.5.2 „Cloud Synchronisation Hardening“ ist eine installierbare Rechnungs- und Ausgaben-PWA mit Supabase als verbindlichem gemeinsamen Datenstand. IndexedDB dient ausschließlich als Offline-Cache und Warteschlange, nicht als konkurrierende Hauptdatenbank. Mobile Backups verwenden das native Speichern-/Teilen-Menü; vorhandene lokale Kundendaten werden niemals ungefragt übertragen.
 
 ## Cloud-Betrieb und Offline-Cache
 
 Der Produktionsbuild enthält ausschließlich die öffentliche Projekt-URL und den öffentlichen Supabase-Publishable-Key. Für Entwicklung oder eine abweichende Bereitstellung können `VITE_SUPABASE_URL` und `VITE_SUPABASE_ANON_KEY` diese Vorgaben überschreiben. Secret-, Service-Role-, Datenbank- oder JWT-Schlüssel gehören niemals in Frontend, Repository oder Build. Details stehen in `supabase/README.md`, `docs/MULTI_DEVICE_ARCHITECTURE.md` und `docs/MIGRATION_LOCAL_TO_CLOUD.md`.
 
 Die Anmeldung erfolgt mit E-Mail-Adresse und Passwort. Organisationszuordnungen werden serverseitig verwaltet; ein nicht freigeschaltetes Konto sieht keine Fachdaten. Ein frisches Gerät lädt nach der Freigabe den vorhandenen Cloud-Bestand. Erkennt die App lokale Geschäftsdaten, sperrt sie die automatische Übertragung: Erst Analyse, Backup und die Bestätigung `DATEN ÜBERNEHMEN` starten die wiederaufnehmbare Migration. Die Alternative `CLOUD VERWENDEN` benötigt ebenfalls ein Backup und eine eigene Bestätigung.
+
+Jeder erfolgreiche Abgleich sendet zunächst ausschließlich ausdrücklich vorgemerkte lokale Änderungen und lädt danach den vollständigen Organisationsbestand neu. Der Snapshot ersetzt Rechnungen samt Positionen, Kunden, Zahlungen, Erinnerungsstatus, Ausgaben und Vorlagen in einer atomaren lokalen Transaktion. Cloud-Löschungen und nicht mehr vorhandene Cache-Datensätze werden übernommen; ausstehende Offline-Änderungen bleiben geschützt. Realtime, erneute Internetverbindung, App-Fokus und manueller Abgleich verwenden alle denselben Ablauf.
 
 ## Installation und Start
 
@@ -55,7 +57,7 @@ Vor der ersten neuen Finalisierung verlangt die App die sichtbare Kontrolle von 
 
 ## Datenhaltung und Unveränderbarkeit
 
-Dexie verwaltet das versionierte IndexedDB-Schema für Unternehmen, Kunden, Rechnungen, Zahlungen, Ausgaben, Belege, Audit- und Importprotokolle, Einstellungen sowie Synchronisationswarteschlange und Konflikte. LocalStorage wird ausschließlich für das Farbschema verwendet.
+Dexie verwaltet das versionierte IndexedDB-Schema für Unternehmen, Kunden, Rechnungen, Zahlungen, Ausgaben, Belege, Audit- und Importprotokolle, Einstellungen sowie Synchronisationswarteschlange, Konflikte und das auf 50 Läufe begrenzte interne Sync-Diagnoseprotokoll. LocalStorage enthält nur nichtfachliche Geräteinformationen wie Farbschema, Sitzungsstatus und zwischengespeicherte Organisationszuordnung; Rechnungsdaten liegen dort nicht.
 
 Entwürfe sind bearbeitbar. Im Cloud-Modus vergibt PostgreSQL Rechnungs- und Kundennummern atomar; eine Offline-Finalisierung ist bewusst gesperrt. Beim Finalisieren werden eine eindeutige Nummer, Kunden- und Unternehmenssnapshot, Inhalts-Hash und PDF-Snapshot gespeichert. Finalisierte Rechnungen werden zusätzlich durch Datenbank-Trigger gegen stille Änderungen oder Löschung geschützt. Korrekturen erfolgen über eine verknüpfte Stornorechnung. Kunden mit Historie werden archiviert.
 
@@ -90,7 +92,7 @@ Die App-Shell funktioniert offline. Safe Areas, große Touch-Flächen und Hoch-/
 
 ## Updates
 
-Ein neuer Service Worker wird im Hintergrund erkannt, aber nicht automatisch während der Arbeit aktiviert. Unter `Einstellungen → App-Version & Updates` kann das Update bewusst installiert werden. Nur alte App-Caches werden entfernt; IndexedDB-Nutzerdaten bleiben bestehen. Entwürfe sollten vorher gespeichert und ein Backup sollte regelmäßig erstellt werden.
+Der Service Worker aktualisiert die statische App-Shell automatisch und räumt überholte App-Caches auf. Er cached keine Supabase-Antworten oder Geschäftsdaten. IndexedDB-Nutzerdaten bleiben bei App-Updates und der additiven Schema-Migration erhalten; regelmäßige Backups bleiben trotzdem notwendig.
 
 ## Bekannte Einschränkungen
 

@@ -122,8 +122,8 @@ export async function restoreBackup(file: File, password?: string) {
   if (!checksum || await sha256(JSON.stringify(parsed, serialize)) !== checksum) throw new Error("Integritätsprüfung fehlgeschlagen. Das Backup ist möglicherweise beschädigt.");
   const payload = decodeBlobs(parsed) as BackupPayload;
   if (!payload.data || !Array.isArray(payload.data.customers) || !Array.isArray(payload.data.invoices)) throw new Error("Das Backup enthält keine gültige Datenstruktur.");
-  await db.transaction("rw", [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings, db.serviceTemplates, db.recurringExpenses, db.syncQueue, db.syncMetadata, db.syncConflicts], async () => {
-    await Promise.all([db.company.clear(), db.customers.clear(), db.invoices.clear(), db.payments.clear(), db.expenses.clear(), db.attachments.clear(), db.auditLogs.clear(), db.importLogs.clear(), db.settings.clear(), db.serviceTemplates.clear(), db.recurringExpenses.clear(), db.syncQueue.clear(), db.syncMetadata.clear(), db.syncConflicts.clear()]);
+  await db.transaction("rw", [db.company, db.customers, db.invoices, db.payments, db.expenses, db.attachments, db.auditLogs, db.importLogs, db.settings, db.serviceTemplates, db.recurringExpenses, db.syncQueue, db.syncMetadata, db.syncConflicts, db.syncLogs], async () => {
+    await Promise.all([db.company.clear(), db.customers.clear(), db.invoices.clear(), db.payments.clear(), db.expenses.clear(), db.attachments.clear(), db.auditLogs.clear(), db.importLogs.clear(), db.settings.clear(), db.serviceTemplates.clear(), db.recurringExpenses.clear(), db.syncQueue.clear(), db.syncMetadata.clear(), db.syncConflicts.clear(), db.syncLogs.clear()]);
     await db.company.bulkPut(payload.data.company); await db.customers.bulkPut(payload.data.customers); await db.invoices.bulkPut(payload.data.invoices);
     await db.payments.bulkPut(payload.data.payments); await db.expenses.bulkPut(payload.data.expenses); await db.attachments.bulkPut(payload.data.attachments);
     await db.auditLogs.bulkPut(payload.data.auditLogs); await db.importLogs.bulkPut(payload.data.importLogs);

@@ -55,7 +55,7 @@ async function clearCache(includeSettings: boolean): Promise<void> {
   const tables = [
     db.company, db.customers, db.invoices, db.payments, db.expenses,
     db.recurringExpenses, db.serviceTemplates, db.attachments, db.auditLogs,
-    db.importLogs, db.syncQueue, db.syncMetadata, db.syncConflicts,
+    db.importLogs, db.syncQueue, db.syncMetadata, db.syncConflicts, db.syncLogs,
     ...(includeSettings ? [db.settings] : [])
   ];
   await withRemoteWriteSuppressed(() => db.transaction("rw", tables, async () => {
