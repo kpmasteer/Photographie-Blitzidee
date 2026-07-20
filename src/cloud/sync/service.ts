@@ -13,20 +13,18 @@ import {
 } from "./mapping";
 import { claimPendingChanges, markSyncComplete, markSyncFailed, recordSyncConflict, recoverInterruptedChanges, resolveSyncConflict } from "./queue";
 import { replaceLocalCacheWithCloud } from "../cacheIsolation";
-import type { RemoteRecordBundle, RemoteVersionedRow, SyncEntityType, SyncMetadata, SyncProgress, SyncQueueEntry } from "./types";
+import { reconcileCloudSnapshot, type CloudSnapshot } from "./reconcile";
+import { timestampWinner } from "./conflictResolution";
+import type { RemoteRecordBundle, RemoteVersionedRow, SyncEntityType, SyncMetadata, SyncProgress, SyncQueueEntry, SyncRunLog, SyncTrigger } from "./types";
 
 type Client = NonNullable<typeof supabase>;
 type LocalRecord = Company | Customer | Invoice | Payment | Expense | RecurringExpense | ServiceTemplate | ImportLog | Attachment;
 
-const entityForTable: Record<string, SyncEntityType> = Object.fromEntries(
-  Object.entries(tableForEntity).map(([entity, table]) => [table, entity as SyncEntityType])
-);
 const priority: Record<SyncEntityType, number> = {
   company: 0, customer: 1, invoice: 2, payment: 3, recurringExpense: 4, expense: 5,
   serviceTemplate: 6, importLog: 7, attachment: 8
 };
 const progressListeners = new Set<(progress: SyncProgress) => void>();
-const inFlightRemoteKeys = new Set<string>();
 let progress: SyncProgress = { state: "idle", pending: 0, conflicts: 0 };
 
 export function subscribeSyncProgress(listener: (value: SyncProgress) => void): () => void {
@@ -67,19 +65,6 @@ async function localRecord(entityType: SyncEntityType, id: string): Promise<Loca
   }
 }
 
-async function deleteLocalRecord(entityType: SyncEntityType, id: string): Promise<void> {
-  switch (entityType) {
-    case "company": return;
-    case "customer": await db.customers.delete(id); return;
-    case "invoice": await db.invoices.delete(id); return;
-    case "payment": await db.payments.delete(id); return;
-    case "expense": await db.expenses.delete(id); return;
-    case "recurringExpense": await db.recurringExpenses.delete(id); return;
-    case "serviceTemplate": await db.serviceTemplates.delete(id); return;
-    case "importLog": await db.importLogs.delete(id); return;
-    case "attachment": await db.attachments.delete(id); return;
-  }
-}
 
 async function putLocalRecord(entityType: SyncEntityType, record: LocalRecord): Promise<void> {
   switch (entityType) {
@@ -237,9 +222,24 @@ async function uploadEntry(client: Client, entry: SyncQueueEntry): Promise<void>
   if (current && metadata) {
     const currentBundle = await completeRemoteBundle(client, entry.entityType, current);
     const currentHash = await bundleHash(currentBundle);
-    if (remoteVersion(current) !== metadata.remoteVersion || (metadata.lastSyncedHash && currentHash !== metadata.lastSyncedHash)) {
-      await saveConflict(entry, local, current, current.deleted_at ? "remote_deleted" : "concurrent_change");
-      return;
+    const remoteChanged = remoteVersion(current) !== metadata.remoteVersion
+      || Boolean(metadata.lastSyncedHash && currentHash !== metadata.lastSyncedHash);
+    if (remoteChanged) {
+      const localTimestamp = local ? localUpdatedAt(local) : entry.updatedAt;
+      const cloudTimestamp = remoteUpdatedAt(current);
+      const winner = timestampWinner(localTimestamp, cloudTimestamp);
+      if (winner === "cloud") {
+        // The queued change is older than the cloud row. Dropping only this
+        // queue entry lets the following full snapshot restore the cloud value.
+        await markSyncComplete(entry.id);
+        return;
+      }
+      if (winner === "local") {
+        await db.syncMetadata.put(metadataFor(entry.organizationId, entry.entityType, entry.entityId, current, currentHash));
+      } else {
+        await saveConflict(entry, local, current, current.deleted_at ? "remote_deleted" : "concurrent_change");
+        return;
+      }
     }
   } else if (current && !metadata && local) {
     const mayInitializeCompany = entry.entityType === "company" && isInitialEmptyCompanyRow(current);
@@ -359,49 +359,157 @@ async function localFromRemote(client: Client, organizationId: string, entityTyp
   }, await rowsForInvoice(client, String(row.id)));
 }
 
-async function applyRemoteRow(client: Client, organizationId: string, entityType: SyncEntityType, row: RemoteVersionedRow): Promise<void> {
-  const entityId = entityType === "company" ? "company" : String(row.local_id ?? row.id);
-  if (!entityId) return;
-  const metadataId = syncRecordKey(organizationId, entityType, entityId);
-  if (inFlightRemoteKeys.has(metadataId)) return;
-  const metadata = await db.syncMetadata.get(metadataId);
-  const deletedAt = typeof row.deleted_at === "string" ? row.deleted_at : undefined;
-  if (metadata && remoteVersion(row) <= metadata.remoteVersion && metadata.remoteUpdatedAt === remoteUpdatedAt(row) && metadata.deletedAt === deletedAt) return;
-  const local = await localRecord(entityType, entityId);
-  const pending = await db.syncQueue.where("dedupeKey").equals(metadataId).first();
-  if (pending) {
-    await saveConflict({ organizationId, entityType, entityId }, local, row, row.deleted_at ? "remote_deleted" : "concurrent_change");
-    return;
-  }
-  const remoteBundle = await completeRemoteBundle(client, entityType, row);
-  const hash = await bundleHash(remoteBundle);
-  if (!metadata && local) {
-    if (entityType === "company" && !Object.keys((row.data as object | undefined) ?? {}).length) return;
-    const localBundle = await toRemoteBundle(organizationId, entityType, local as SyncableRecord);
-    if (await bundleHash(localBundle) !== hash) {
-      if (entityType !== "company" || (local as Company).confirmedAt) {
-        await saveConflict({ organizationId, entityType, entityId }, local, row);
-        return;
-      }
-    }
-  }
-  await withRemoteWriteSuppressed(async () => {
-    if (row.deleted_at) await deleteLocalRecord(entityType, entityId);
-    else await putLocalRecord(entityType, await localFromRemote(client, organizationId, entityType, row));
-  });
-  const applied = row.deleted_at ? undefined : await localRecord(entityType, entityId);
-  await db.syncMetadata.put(metadataFor(organizationId, entityType, entityId, row, hash, applied));
-}
 
 async function fetchAllRows(client: Client, table: string, organizationId: string): Promise<RemoteVersionedRow[]> {
   const rows: RemoteVersionedRow[] = [];
+  const orderColumn = table === "company_settings" ? "organization_id" : "id";
   for (let start = 0; ; start += 1_000) {
-    const { data, error } = await client.from(table).select("*").eq("organization_id", organizationId).range(start, start + 999);
+    const { data, error } = await client.from(table).select("*").eq("organization_id", organizationId).order(orderColumn).range(start, start + 999);
     if (error) throw error;
     const page = (data ?? []) as RemoteVersionedRow[];
     rows.push(...page);
     if (page.length < 1_000) return rows;
   }
+}
+const activeRows = (rows: RemoteVersionedRow[]) => rows.filter((row) => !row.deleted_at);
+const localIdFromRow = (entityType: SyncEntityType, row: RemoteVersionedRow) =>
+  entityType === "company" ? "company" : String(row.local_id ?? row.id ?? "");
+
+async function loadCloudSnapshot(client: Client, organizationId: string): Promise<CloudSnapshot> {
+  const entries = Object.entries(tableForEntity) as Array<[SyncEntityType, string]>;
+  const fetched = await Promise.all([
+    ...entries.map(async ([entityType, table]) => [entityType, await fetchAllRows(client, table, organizationId)] as const),
+    fetchAllRows(client, "invoice_items", organizationId)
+  ]);
+  const invoiceItemRows = fetched[fetched.length - 1] as RemoteVersionedRow[];
+  const rowsByEntity = new Map<SyncEntityType, RemoteVersionedRow[]>(
+    (fetched.slice(0, -1) as Array<readonly [SyncEntityType, RemoteVersionedRow[]]>)
+  );
+  const rows = (entityType: SyncEntityType) => rowsByEntity.get(entityType) ?? [];
+  const active = (entityType: SyncEntityType) => activeRows(rows(entityType));
+  const localIdMap = (entityType: SyncEntityType) => new Map(
+    active(entityType).map((row) => [String(row.id ?? ""), localIdFromRow(entityType, row)])
+  );
+
+  const customerIds = localIdMap("customer");
+  const invoiceIds = localIdMap("invoice");
+  const expenseIds = localIdMap("expense");
+  const activeInvoiceRemoteIds = new Set(active("invoice").map((row) => String(row.id)));
+  const activeExpenseRemoteIds = new Set(active("expense").map((row) => String(row.id)));
+  const itemsByInvoice = new Map<string, RemoteVersionedRow[]>();
+  for (const row of activeRows(invoiceItemRows)) {
+    const invoiceId = String(row.invoice_id ?? "");
+    if (!activeInvoiceRemoteIds.has(invoiceId)) continue;
+    const group = itemsByInvoice.get(invoiceId) ?? [];
+    group.push(row);
+    itemsByInvoice.set(invoiceId, group);
+  }
+  for (const group of itemsByInvoice.values()) {
+    group.sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0));
+  }
+
+  const customers = active("customer").map(customerFromRemote);
+  const invoices = active("invoice").map((row) => invoiceFromRemote({
+    ...row,
+    customer_local_id: customerIds.get(String(row.customer_id ?? "")),
+    cancelled_invoice_local_id: invoiceIds.get(String(row.cancelled_invoice_id ?? "")),
+    correction_invoice_local_id: invoiceIds.get(String(row.correction_invoice_id ?? ""))
+  }, itemsByInvoice.get(String(row.id)) ?? []));
+  const payments = active("payment")
+    .filter((row) => activeInvoiceRemoteIds.has(String(row.invoice_id ?? "")))
+    .map((row) => paymentFromRemote({
+      ...row,
+      invoice_local_id: invoiceIds.get(String(row.invoice_id ?? ""))
+    }));
+  const expenses = active("expense").map(expenseFromRemote);
+  const recurringExpenses = active("recurringExpense").map(recurringExpenseFromRemote);
+  const serviceTemplates = active("serviceTemplate").map(templateFromRemote);
+  const importLogs = active("importLog").map(importLogFromRemote);
+  const companyRow = active("company")[0];
+  const company = companyRow ? companyFromRemote(companyRow) : undefined;
+
+  const currentAttachmentMetadata = new Map(
+    (await db.syncMetadata.where("[organizationId+entityType]").equals([organizationId, "attachment"]).toArray())
+      .map((item) => [item.id, item])
+  );
+  const currentAttachments = new Map((await db.attachments.toArray()).map((item) => [item.id, item]));
+  const attachments: Attachment[] = [];
+  for (const row of active("attachment")) {
+    const ownerType = row.owner_type === "invoice" ? "invoice" : "expense";
+    const ownerRemoteId = String(row.owner_id ?? "");
+    if (ownerType === "invoice" && !activeInvoiceRemoteIds.has(ownerRemoteId)) continue;
+    if (ownerType === "expense" && !activeExpenseRemoteIds.has(ownerRemoteId)) continue;
+    const id = localIdFromRow("attachment", row);
+    const ownerId = ownerType === "invoice" ? invoiceIds.get(ownerRemoteId) : expenseIds.get(ownerRemoteId);
+    if (!id || !ownerId) continue;
+    const key = syncRecordKey(organizationId, "attachment", id);
+    const known = currentAttachmentMetadata.get(key);
+    const cached = currentAttachments.get(id);
+    const unchanged = cached
+      && known?.remoteVersion === remoteVersion(row)
+      && known.remoteUpdatedAt === remoteUpdatedAt(row)
+      && cached.size === Number(row.size_bytes ?? cached.size);
+    let blob = cached?.blob;
+    if (!unchanged || !blob) {
+      const bucket = String(row.bucket ?? "");
+      const objectPath = String(row.object_path ?? "");
+      const { data, error } = await client.storage.from(bucket).download(objectPath);
+      if (error) throw error;
+      blob = data;
+    }
+    attachments.push(attachmentFromRemote({ ...row, owner_local_id: ownerId }, blob));
+  }
+
+  const recordMaps = new Map<SyncEntityType, Map<string, LocalRecord>>([
+    ["company", new Map(company ? [["company", company]] : [])],
+    ["customer", new Map(customers.map((record) => [record.id, record]))],
+    ["invoice", new Map(invoices.map((record) => [record.id, record]))],
+    ["payment", new Map(payments.map((record) => [record.id, record]))],
+    ["expense", new Map(expenses.map((record) => [record.id, record]))],
+    ["recurringExpense", new Map(recurringExpenses.map((record) => [record.id, record]))],
+    ["serviceTemplate", new Map(serviceTemplates.map((record) => [record.id, record]))],
+    ["importLog", new Map(importLogs.map((record) => [record.id, record]))],
+    ["attachment", new Map(attachments.map((record) => [record.id, record]))]
+  ]);
+  const metadata: SyncMetadata[] = [];
+  for (const [entityType] of entries) {
+    for (const row of rows(entityType)) {
+      const entityId = localIdFromRow(entityType, row);
+      if (!entityId) continue;
+      const bundle: RemoteRecordBundle = entityType === "invoice"
+        ? { table: "invoices", row, childRows: [{ table: "invoice_items", rows: itemsByInvoice.get(String(row.id)) ?? [] }] }
+        : { table: tableForEntity[entityType], row };
+      metadata.push(metadataFor(
+        organizationId,
+        entityType,
+        entityId,
+        row,
+        await bundleHash(bundle),
+        recordMaps.get(entityType)?.get(entityId)
+      ));
+    }
+  }
+
+  return {
+    company,
+    customers,
+    invoices,
+    payments,
+    expenses,
+    recurringExpenses,
+    serviceTemplates,
+    importLogs,
+    attachments,
+    metadata,
+    downloaded: entries.reduce((sum, [entityType]) => sum + rows(entityType).length, invoiceItemRows.length)
+  };
+}
+
+async function recordSyncRun(log: SyncRunLog): Promise<void> {
+  await db.syncLogs.put(log);
+  const history = await db.syncLogs.where("organizationId").equals(log.organizationId).sortBy("startedAt");
+  const obsolete = history.slice(0, Math.max(0, history.length - 50)).map((item) => item.id);
+  if (obsolete.length) await db.syncLogs.bulkDelete(obsolete);
 }
 
 export class CloudSyncService {
@@ -410,10 +518,12 @@ export class CloudSyncService {
   private stopped = false;
   private migrationAuthorized = false;
   private unsubscribeLocalChanges?: () => void;
-  private refreshRunning?: Promise<void>;
-  private readonly onlineHandler = () => { void this.refreshFromCloud(); };
-  private readonly focusHandler = () => { if (document.visibilityState === "visible") void this.refreshFromCloud(); };
-  private readonly visibilityHandler = () => { if (document.visibilityState === "visible") void this.refreshFromCloud(); };
+  private realtimeRefreshTimer?: ReturnType<typeof setTimeout>;
+  private rerunRequested = false;
+  private rerunTrigger: SyncTrigger = "realtime";
+  private readonly onlineHandler = () => { void this.syncNow("online"); };
+  private readonly focusHandler = () => { if (document.visibilityState === "visible") void this.syncNow("focus"); };
+  private readonly visibilityHandler = () => { if (document.visibilityState === "visible") void this.syncNow("focus"); };
 
   constructor(readonly organizationId: string, private readonly client: Client) {}
 
@@ -432,7 +542,7 @@ export class CloudSyncService {
     }
     await recoverInterruptedChanges(this.organizationId);
     setActiveSyncOrganization(this.organizationId);
-    this.unsubscribeLocalChanges = subscribeLocalChanges(() => { void this.syncNow(); });
+    this.unsubscribeLocalChanges = subscribeLocalChanges(() => { void this.syncNow("local_change"); });
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.onlineHandler);
       window.addEventListener("focus", this.focusHandler);
@@ -448,18 +558,13 @@ export class CloudSyncService {
       publishProgress({ state: "offline", pending, message: "Offline – Änderungen bleiben sicher auf diesem Gerät." });
       return;
     }
-    if (!storedGate?.completedAt) {
-      await enqueueLocalSnapshot(this.organizationId);
-      await this.syncNow();
-      if (this.stopped) return;
-      await this.pullRemoteChanges();
-      if (storedGate?.authorizedAt) await this.completeMigrationGateIfSettled(storedGate.authorizedAt);
-    } else {
-      await this.pullRemoteChanges();
-    }
+    if (!storedGate?.completedAt) await enqueueLocalSnapshot(this.organizationId);
+    await this.syncNow(storedGate?.completedAt ? "startup" : "migration");
     if (this.stopped) return;
+    if (!storedGate?.completedAt && storedGate?.authorizedAt) {
+      await this.completeMigrationGateIfSettled(storedGate.authorizedAt);
+    }
     this.subscribeRealtime();
-    await this.syncNow();
   }
 
   stop(): void {
@@ -469,72 +574,170 @@ export class CloudSyncService {
       window.removeEventListener("focus", this.focusHandler);
       document.removeEventListener("visibilitychange", this.visibilityHandler);
     }
+    if (this.realtimeRefreshTimer) clearTimeout(this.realtimeRefreshTimer);
+    this.realtimeRefreshTimer = undefined;
     if (this.channel) void this.client.removeChannel(this.channel);
     this.channel = undefined;
     this.unsubscribeLocalChanges?.();
     this.unsubscribeLocalChanges = undefined;
   }
 
-  async pullRemoteChanges(): Promise<void> {
-    const order: SyncEntityType[] = ["company", "customer", "invoice", "payment", "recurringExpense", "expense", "serviceTemplate", "importLog", "attachment"];
-    for (const entityType of order) {
-      const rows = await fetchAllRows(this.client, tableForEntity[entityType], this.organizationId);
-      for (const row of rows) await applyRemoteRow(this.client, this.organizationId, entityType, row);
+  async pullRemoteChanges(): Promise<{ downloaded: number; changed: number; deleted: number }> {
+    const snapshot = await loadCloudSnapshot(this.client, this.organizationId);
+    if (this.stopped) return { downloaded: snapshot.downloaded, changed: 0, deleted: 0 };
+    const result = await reconcileCloudSnapshot(this.organizationId, snapshot);
+
+    for (const entityId of result.preservedFinalizedInvoices) {
+      const [local, metadata] = await Promise.all([
+        db.invoices.get(entityId),
+        db.syncMetadata.get(syncRecordKey(this.organizationId, "invoice", entityId))
+      ]);
+      await recordSyncConflict({
+        organizationId: this.organizationId,
+        entityType: "invoice",
+        entityId,
+        remoteId: metadata?.remoteId ?? "",
+        reason: "invalid_remote_data",
+        localValue: local,
+        remoteValue: { missingFromCompleteCloudSnapshot: true },
+        localUpdatedAt: local?.updatedAt,
+        remoteUpdatedAt: metadata?.remoteUpdatedAt,
+        remoteVersion: metadata?.remoteVersion
+      });
     }
+
+    const activeInvoiceIds = new Set(snapshot.invoices.map((invoice) => invoice.id));
+    const restoredIntegrityConflicts = (await db.syncConflicts
+      .where("[organizationId+status]").equals([this.organizationId, "open"]).toArray())
+      .filter((conflict) => conflict.reason === "invalid_remote_data" && activeInvoiceIds.has(conflict.entityId));
+    if (restoredIntegrityConflicts.length) {
+      const resolvedAt = new Date().toISOString();
+      await Promise.all(restoredIntegrityConflicts.map((conflict) =>
+        db.syncConflicts.update(conflict.id, { status: "resolved", resolvedAt })
+      ));
+    }
+    return { downloaded: snapshot.downloaded, changed: result.changed, deleted: result.deleted };
   }
 
-  async refreshFromCloud(): Promise<void> {
-    if (this.refreshRunning) return this.refreshRunning;
-    if (!this.migrationAuthorized || (typeof navigator !== "undefined" && !navigator.onLine)) {
-      await this.syncNow();
-      return;
-    }
-    this.refreshRunning = (async () => {
-      await this.syncNow();
-      if (!this.stopped) await this.pullRemoteChanges();
-    })();
-    try { await this.refreshRunning; }
-    finally { this.refreshRunning = undefined; }
+  async refreshFromCloud(trigger: SyncTrigger = "manual"): Promise<void> {
+    await this.syncNow(trigger);
   }
 
-  async syncNow(): Promise<void> {
+  async syncNow(trigger: SyncTrigger = "manual"): Promise<void> {
     if (!this.migrationAuthorized) {
       const pending = await db.syncQueue.where("organizationId").equals(this.organizationId).count();
       publishProgress({ state: "idle", pending, message: "Vor dem ersten Cloud-Abgleich bitte Backup und Datenübernahme bestätigen." });
       return;
     }
-    if (this.running) return this.running;
+    if (this.running) {
+      this.rerunRequested = true;
+      this.rerunTrigger = trigger;
+      return this.running;
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       publishProgress({ state: "offline", message: "Offline – Änderungen bleiben sicher auf diesem Gerät." });
       return;
     }
-    this.running = this.flush();
+    this.running = (async () => {
+      let nextTrigger = trigger;
+      do {
+        this.rerunRequested = false;
+        await this.runSync(nextTrigger);
+        nextTrigger = this.rerunTrigger;
+      } while (this.rerunRequested && !this.stopped);
+    })();
     try { await this.running; }
     finally { this.running = undefined; }
   }
 
-  private async flush(): Promise<void> {
+  private async runSync(trigger: SyncTrigger): Promise<void> {
+    const startedAt = new Date().toISOString();
+    const startedMs = Date.now();
     publishProgress({ state: "syncing", message: undefined });
+    let uploaded = 0;
+    let downloaded = 0;
+    let changed = 0;
+    let deleted = 0;
     try {
-      while (!this.stopped) {
-        const batch = (await claimPendingChanges(this.organizationId)).sort((a, b) => priority[a.entityType] - priority[b.entityType]);
-        if (!batch.length) break;
-        for (const entry of batch) {
-          const key = syncRecordKey(entry.organizationId, entry.entityType, entry.entityId);
-          inFlightRemoteKeys.add(key);
-          try { await uploadEntry(this.client, entry); }
-          catch (cause) { await markSyncFailed(entry.id, cause); }
-          finally { inFlightRemoteKeys.delete(key); }
+      uploaded = await this.flushUploads();
+      if (this.stopped) return;
+      const snapshotResult = await this.pullRemoteChanges();
+      downloaded = snapshotResult.downloaded;
+      changed = snapshotResult.changed;
+      deleted = snapshotResult.deleted;
+      const [pending, conflicts, failed] = await Promise.all([
+        db.syncQueue.where("organizationId").equals(this.organizationId).count(),
+        db.syncConflicts.where("[organizationId+status]").equals([this.organizationId, "open"]).count(),
+        db.syncQueue.where("organizationId").equals(this.organizationId).filter((entry) => entry.status === "failed").count()
+      ]);
+      const finishedAt = new Date().toISOString();
+      await recordSyncRun({
+        id: crypto.randomUUID(),
+        organizationId: this.organizationId,
+        trigger,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - startedMs,
+        downloaded,
+        uploaded,
+        changed,
+        deleted,
+        conflicts,
+        failed
+      });
+      publishProgress({
+        state: "idle",
+        pending,
+        conflicts,
+        lastSyncedAt: finishedAt,
+        message: pending ? "Einige Änderungen werden später erneut versucht." : undefined
+      });
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : "Synchronisierung fehlgeschlagen.";
+      const [conflicts, failed] = await Promise.all([
+        db.syncConflicts.where("[organizationId+status]").equals([this.organizationId, "open"]).count(),
+        db.syncQueue.where("organizationId").equals(this.organizationId).filter((entry) => entry.status === "failed").count()
+      ]);
+      const finishedAt = new Date().toISOString();
+      try {
+        await recordSyncRun({
+          id: crypto.randomUUID(),
+          organizationId: this.organizationId,
+          trigger,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - startedMs,
+          downloaded,
+          uploaded,
+          changed,
+          deleted,
+          conflicts,
+          failed,
+          error
+        });
+      } catch {
+        // A diagnostics write must never hide the original sync failure.
+      }
+      publishProgress({ state: "error", conflicts, message: error });
+      throw cause;
+    }
+  }
+
+  private async flushUploads(): Promise<number> {
+    let completed = 0;
+    while (!this.stopped) {
+      const batch = (await claimPendingChanges(this.organizationId)).sort((a, b) => priority[a.entityType] - priority[b.entityType]);
+      if (!batch.length) break;
+      for (const entry of batch) {
+        try {
+          await uploadEntry(this.client, entry);
+          if (!await db.syncQueue.get(entry.id)) completed += 1;
+        } catch (cause) {
+          await markSyncFailed(entry.id, cause);
         }
       }
-      const [pending, conflicts] = await Promise.all([
-        db.syncQueue.where("organizationId").equals(this.organizationId).count(),
-        db.syncConflicts.where("[organizationId+status]").equals([this.organizationId, "open"]).count()
-      ]);
-      publishProgress({ state: "idle", pending, conflicts, lastSyncedAt: new Date().toISOString(), message: pending ? "Einige Änderungen werden später erneut versucht." : undefined });
-    } catch (cause) {
-      publishProgress({ state: "error", message: cause instanceof Error ? cause.message : "Synchronisierung fehlgeschlagen." });
     }
+    return completed;
   }
 
   async useCloudData(): Promise<void> {
@@ -545,9 +748,8 @@ export class CloudSyncService {
       key: `cloudMigration:${this.organizationId}`,
       value: { authorizedAt, completedAt: authorizedAt, reason: "cloud-preferred" }
     });
-    await this.pullRemoteChanges();
+    await this.syncNow("migration");
     if (!this.channel) this.subscribeRealtime();
-    await this.syncNow();
   }
 
   async migrateLocalData(): Promise<number> {
@@ -555,8 +757,7 @@ export class CloudSyncService {
     this.migrationAuthorized = true;
     await db.settings.put({ key: `cloudMigration:${this.organizationId}`, value: { authorizedAt } });
     const queued = await enqueueLocalSnapshot(this.organizationId);
-    await this.syncNow();
-    await this.pullRemoteChanges();
+    await this.syncNow("migration");
     if (!this.channel) this.subscribeRealtime();
     await this.completeMigrationGateIfSettled(authorizedAt);
     return queued;
@@ -591,35 +792,26 @@ export class CloudSyncService {
   }
 
   private subscribeRealtime(): void {
+    if (this.channel) return;
     const channel = this.client.channel(`organization-sync:${this.organizationId}`);
     const tables = [...Object.values(tableForEntity), "invoice_items"];
     for (const table of tables) {
-      channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `organization_id=eq.${this.organizationId}` }, (payload) => {
-        const row = ((payload.new && Object.keys(payload.new).length ? payload.new : payload.old) ?? {}) as RemoteVersionedRow;
-        if (row.organization_id !== this.organizationId) return;
-        void this.onRealtime(table, row);
-      });
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table, filter: `organization_id=eq.${this.organizationId}` },
+        () => this.scheduleRealtimeRefresh()
+      );
     }
     this.channel = channel.subscribe();
   }
 
-  private async onRealtime(table: string, row: RemoteVersionedRow): Promise<void> {
+  private scheduleRealtimeRefresh(): void {
     if (this.stopped) return;
-    try {
-      if (table === "invoice_items") {
-        const invoiceId = String(row.invoice_id ?? "");
-        if (!invoiceId) return;
-        const { data, error } = await this.client.from("invoices").select("*").eq("id", invoiceId).maybeSingle();
-        if (error) throw error;
-        if (data) await applyRemoteRow(this.client, this.organizationId, "invoice", data as RemoteVersionedRow);
-      } else {
-        const entityType = entityForTable[table];
-        if (entityType) await applyRemoteRow(this.client, this.organizationId, entityType, row);
-      }
-      await this.syncNow();
-    } catch (cause) {
-      publishProgress({ state: "error", message: cause instanceof Error ? cause.message : "Realtime-Änderung konnte nicht übernommen werden." });
-    }
+    if (this.realtimeRefreshTimer) clearTimeout(this.realtimeRefreshTimer);
+    this.realtimeRefreshTimer = setTimeout(() => {
+      this.realtimeRefreshTimer = undefined;
+      void this.syncNow("realtime");
+    }, 250);
   }
 }
 
@@ -710,6 +902,5 @@ export async function resolveCloudConflict(
 ): Promise<void> {
   await resolveSyncConflict(conflictId, resolution);
   if (!activeService) return;
-  if (resolution === "use_remote") await activeService.pullRemoteChanges();
-  else await activeService.syncNow();
+  await activeService.syncNow("manual");
 }

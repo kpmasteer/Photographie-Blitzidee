@@ -1,9 +1,9 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { AppSetting, Attachment, AuditLog, Company, Customer, Expense, ImportLog, Invoice, Payment, RecurringExpense, ServiceTemplate } from "./types";
-import type { SyncConflict, SyncMetadata, SyncQueueEntry } from "./cloud/sync/types";
+import type { SyncConflict, SyncMetadata, SyncQueueEntry, SyncRunLog } from "./cloud/sync/types";
 
-export const APP_VERSION = "0.5.1";
-export const DB_SCHEMA_VERSION = 6;
+export const APP_VERSION = "0.5.2";
+export const DB_SCHEMA_VERSION = 7;
 
 class BlitzideeDatabase extends Dexie {
   company!: EntityTable<Company, "id">;
@@ -20,6 +20,7 @@ class BlitzideeDatabase extends Dexie {
   syncQueue!: EntityTable<SyncQueueEntry, "id">;
   syncMetadata!: EntityTable<SyncMetadata, "id">;
   syncConflicts!: EntityTable<SyncConflict, "id">;
+  syncLogs!: EntityTable<SyncRunLog, "id">;
 
   constructor() {
     super("photographie-blitzidee-rechnungen");
@@ -102,11 +103,28 @@ class BlitzideeDatabase extends Dexie {
       syncMetadata: "id, organizationId, entityType, entityId, remoteId, lastSyncedAt, [organizationId+entityType]",
       syncConflicts: "id, &conflictKey, organizationId, entityType, entityId, status, createdAt, [organizationId+status]"
     });
+    this.version(7).stores({
+      company: "id",
+      customers: "id, customerNumber, lastName, company, archived, importFingerprint, updatedAt",
+      invoices: "id, &[year+invoiceNumber], year, customerId, status, invoiceDate, importFingerprint, updatedAt",
+      payments: "id, invoiceId, paidAt",
+      expenses: "id, paidAt, category, supplier, cancelled, updatedAt, importFingerprint, costType, recurringExpenseId, &periodKey",
+      attachments: "id, [ownerType+ownerId], ownerId",
+      auditLogs: "id, timestamp, recordType, recordId",
+      importLogs: "id, &sourceFingerprint, createdAt",
+      settings: "key",
+      serviceTemplates: "id, sortOrder, archived, sourceFingerprint, updatedAt",
+      recurringExpenses: "id, status, nextDueDate, supplier, category, updatedAt",
+      syncQueue: "id, &dedupeKey, organizationId, entityType, entityId, status, nextAttemptAt, createdAt",
+      syncMetadata: "id, organizationId, entityType, entityId, remoteId, lastSyncedAt, [organizationId+entityType]",
+      syncConflicts: "id, &conflictKey, organizationId, entityType, entityId, status, createdAt, [organizationId+status]",
+      syncLogs: "id, organizationId, startedAt"
+    });
   }
 }
 
-export const db = new BlitzideeDatabase();
 
+export const db = new BlitzideeDatabase();
 export const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
 export async function audit(action: string, recordType: string, recordId: string, before?: unknown, after?: unknown, source = "app") {

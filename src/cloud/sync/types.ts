@@ -86,3 +86,22 @@ export interface SyncProgress {
   lastSyncedAt?: string;
   message?: string;
 }
+
+export type SyncTrigger = "startup" | "local_change" | "manual" | "realtime" | "online" | "focus" | "migration";
+
+/** Internal diagnostics only; never rendered in the normal user interface. */
+export interface SyncRunLog {
+  id: string;
+  organizationId: string;
+  trigger: SyncTrigger;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  downloaded: number;
+  uploaded: number;
+  changed: number;
+  deleted: number;
+  conflicts: number;
+  failed: number;
+  error?: string;
+}

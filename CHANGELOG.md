@@ -1,5 +1,23 @@
 # Changelog
 
+
+## 0.5.2 - 2026-07-20
+
+- Supabase dauerhaft als einzige maßgebliche Datenquelle nach erfolgreicher Verbindung festgelegt
+- bisherigen ergänzenden Pull durch einen vollständigen, atomaren Cloud-Snapshot ersetzt
+- lokal verbliebene gelöschte Rechnungen, Zahlungen und andere Geisterdaten werden sicher bereinigt
+- Rechnungen werden einschließlich aller Positionen ersetzt; gelöschte oder geänderte Positionen bleiben nicht mehr im Gerätecache
+- noch nicht synchronisierte Offline-Änderungen während des Cloud-Abgleichs vor Überschreiben und Löschen geschützt
+- Konfliktregel nach Zeitstempel gehärtet: ältere lokale Änderungen weichen der Cloud, neuere lokale Änderungen werden zuerst hochgeladen
+- Realtime-Ereignisse für Einfügen, Ändern und Löschen lösen geräteübergreifend einen entprellten Vollabgleich aus
+- während eines laufenden Abgleichs eintreffende Realtime-Ereignisse werden anschließend zuverlässig nachgezogen
+- Rechnungsliste, Dashboard, offene Forderungen, Kunden, Zahlungen und Statistiken aktualisieren sich über atomare Dexie-Live-Abfragen ohne App-Neustart
+- initiale Online-Anzeige bis zum erfolgreich geladenen Cloud-Datenstand gesperrt; ein möglicherweise alter Cache bleibt bei Startfehlern verborgen
+- veraltete PWA-App-Caches werden automatisch aktiviert und aufgeräumt; Geschäftsdaten werden weiterhin nicht im Service Worker gecacht
+- internes, auf 50 Läufe begrenztes Diagnoseprotokoll für Download, Upload, Änderungen, Löschungen, Konflikte, Fehler und Dauer ergänzt
+- additive IndexedDB-Migration auf Schema 7 ohne Änderung vorhandener Geschäftsdaten ergänzt
+- Regressionstests für Geisterdaten, Zahlungen, Positionsersetzung, Offline-Schutz, Idempotenz und Integrität finalisierter Rechnungen ergänzt
+- unnötige geräteübergreifende Versionsänderungen wiederkehrender Ausgaben verhindert; ohne neue Fälligkeit wird kein technischer Prüfzeitpunkt mehr synchronisiert
 ## 0.5.1 - 2026-07-20
 
 - Supabase als verbindlichen zentralen Datenstand für die Mehrgerätenutzung stabilisiert
